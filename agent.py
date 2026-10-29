@@ -3,6 +3,7 @@ import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
+
 WEBAPPS_DIR = r"C:\intTech\WebApps"
 
 class AgentHandler(BaseHTTPRequestHandler):
