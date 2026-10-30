@@ -5,45 +5,61 @@
 <title>Kart Track Floor</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none;
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif; color: #fff; }
   canvas { display: block; }
-  video { display: none; }
+  #v { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+  #toast { position: fixed; left: 50%; top: 22px; transform: translateX(-50%) translateY(-20px); z-index: 6;
+    padding: 10px 20px; border-radius: 999px; background: rgba(8,12,22,.8); color: #fff; font-size: 15px;
+    opacity: 0; transition: all .4s; pointer-events: none; max-width: 80vw; text-align: center; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #hint { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; font-size: 13px;
+    color: rgba(255,255,255,.85); padding: 8px 18px; border-radius: 999px; background: rgba(8,12,22,.6);
+    opacity: 0; transition: opacity 1s; pointer-events: none; max-width: 92vw; text-align: center; line-height: 1.6; }
+  #hint.show { opacity: 1; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <video id="v" autoplay playsinline muted></video>
+<div id="toast"></div>
+<div id="hint">F fullscreen &nbsp;·&nbsp; M mirror &nbsp;·&nbsp; V flip &nbsp;·&nbsp; C switch camera &nbsp;·&nbsp; I list cameras
+  &nbsp;·&nbsp; D motion view &nbsp;·&nbsp; &minus; / + sensitivity &nbsp;·&nbsp; A demo &nbsp;·&nbsp; H hide<br>
+  &larr; / &rarr; rotate picture &nbsp;·&nbsp; &uarr; / &darr; rotate camera &nbsp;·&nbsp; , / . shrink / fill camera view
+  &nbsp;·&nbsp; Shift+arrows move camera view &nbsp;·&nbsp; 0 reset &nbsp;·&nbsp; 1 / 2 gap &nbsp;·&nbsp; G grid &nbsp;·&nbsp; R pickups<br>
+  <b>Focus:</b> P mode (all / zone / one person) &nbsp;·&nbsp; Z draw zone &nbsp;·&nbsp; X clear zone &nbsp;·&nbsp; L re-lock
+  &nbsp;·&nbsp; [ / ] min size</div>
 
 <script>
 /*
   KART TRACK - two-projector floor version (webcam only, no installs)
-  Neon palette: yellow / hot pink / purple / white (reads on a dark floor with lights on)
+  Neon palette: yellow / green / hot pink / purple / white (reads on a dark floor with lights on)
 
   SAME FILE on both NUCs, only the URL differs:
     Left  projector NUC :  kart_track.html?side=left
     Right projector NUC :  kart_track.html?side=right
     Single screen test  :  kart_track.html
 
-  Track shape:
-    (default)      semi-circle arch, start on left leg, finish on right leg
-    &track=oval    full closed oval loop across both screens, checkered start/finish line
-    &round=1       arch only: narrower, truer semicircle
+  Track shape:   (default) semi-circle arch      &track=oval  full closed oval      &round=1  narrower arch
 
-  Other URL settings:
-    &mirror=1  flip camera left/right      &flip=1  flip camera up/down
-    &sens=1.5  more sensitive (0.5 = less) &respawn=4000  ms before pickups grow back
+  Keys (same family as the autumn grove; settings are remembered per browser):
+    F fullscreen   M mirror camera   V flip camera   C next camera   I list cameras
+    D motion view (shows exactly what is sensed)   - / + sensitivity   A demo mover   H hide help
+    Left/Right  rotate the picture 90 deg          Up/Down  rotate the camera input 90 deg
+    , / .  shrink / fill the camera view           Shift+arrows  move the camera view     0  reset camera fit
+    1 / 2  narrower / wider dark gap between the two projected areas
+    G calibration grid    R bring pickups back
+    Focus:  P mode (all / only inside zone / one person)   Z draw zone   X clear zone   L re-lock   [ / ] min size
 
-  Keys (settings are remembered per browser, so each NUC / GitHub Pages visit keeps its own):
-    Left / Right arrows  rotate the picture 90 degrees
-    Up / Down arrows     rotate the camera input 90 degrees
-    M  mirror camera     V  flip camera     - / +  (or [ / ])  sensitivity
-    C  calibration grid + seam line         R  bring pickups back   F  fullscreen
-  URL equivalents: &rot=0-3  &camrot=0-3  &mirror=1  &flip=1  &sens=1.2
+  URL options: &mirror=1 &flip=1 &sens=1.2 &rot=0-3 &camrot=0-3 &gap=0.5 &zoom=1 &camx=0 &camy=0 &respawn=4000 &hint=0
 */
 
 const q = new URLSearchParams(location.search);
 const SIDE = (q.get('side') || 'full').toLowerCase();       // left | right | full
 const OVAL = (q.get('track') || '').toLowerCase() === 'oval';
+const ROUND = q.get('round') === '1';
+const RESPAWN_MS = parseInt(q.get('respawn') || '4000', 10);
+
 // settings: URL params win, otherwise whatever was last set with the keyboard on this browser
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('kart_' + SIDE) || '{}'); } catch (e) {}
@@ -53,28 +69,35 @@ let FLIP = String(pick('flip', 0)) === '1';
 let SENS = parseFloat(pick('sens', 1));
 let ROT = ((parseInt(pick('rot', 0), 10) % 4) + 4) % 4;        // picture rotation, 90 degree steps
 let CAMROT = ((parseInt(pick('camrot', 0), 10) % 4) + 4) % 4;  // camera rotation, 90 degree steps
+let GAP = parseFloat(pick('gap', 0.5));        // unprojected gap between the two screens, in screen widths
+let CAMZOOM = parseFloat(pick('zoom', 1));     // camera fit (>1 = fill more)
+let CAMX = parseFloat(pick('camx', 0));        // camera shift, fraction of frame
+let CAMY = parseFloat(pick('camy', 0));
+let ZONE = saved.zone || null;                 // {x0,y0,x1,y1} as 0..1 of the picture; null = whole view
+let PMODE = (saved.pmode | 0) % 3;             // 0 all movement, 1 only inside zone, 2 one person (inside zone)
+let MINAREA = saved.minArea || 22;             // smallest blob (grid cells) that can become "the person"
 function saveSettings() {
   try {
     localStorage.setItem('kart_' + SIDE, JSON.stringify({
-      mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0, sens: SENS, rot: ROT, camrot: CAMROT
+      mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0, sens: SENS, rot: ROT, camrot: CAMROT,
+      gap: GAP, zoom: CAMZOOM, camx: CAMX, camy: CAMY, zone: ZONE, pmode: PMODE, minArea: MINAREA
     }));
   } catch (e) {}
 }
-const ROUND = q.get('round') === '1';
-const RESPAWN_MS = parseInt(q.get('respawn') || '4000', 10);
 
 /* neon colours */
-const YELLOW = '#fff200', PINK = '#ff1fb4', PURPLE = '#a926ff', WHITE = '#ffffff';
-const HUES = [56, 322, 280];   // yellow, pink, purple (hsl hues). -1 = white
+const YELLOW = '#fff200', PINK = '#ff1fb4', PURPLE = '#a926ff', GREEN = '#39ff14', WHITE = '#ffffff';
+const HUES = [56, 120, 322, 280, 322, 56, 120];   // yellow, green, pink, purple (hsl hues). -1 = white
 
 const cv = document.getElementById('c');
-const dctx = cv.getContext('2d');           // what the projector shows
-const sc = document.createElement('canvas'); // the scene is drawn here, then rotated onto cv
+const dctx = cv.getContext('2d');             // what the projector shows
+const sc = document.createElement('canvas');   // the scene is drawn here, then rotated onto cv
 const ctx = sc.getContext('2d');
 const vid = document.getElementById('v');
+const toastEl = document.getElementById('toast'), hintEl = document.getElementById('hint');
 
 let vw, vh, W, H, offset, geo, trackLayer, items = [], ambient = [];
-let showCal = false;
+let showCal = false, debug = false, demo = false;
 
 function mulberry32(a) {
   return function () {
@@ -84,10 +107,25 @@ function mulberry32(a) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
 function hsl(h, l, a) {
   if (h < 0) return `hsla(0,0%,100%,${a === undefined ? 1 : a})`;
   return `hsla(${h},100%,${l}%,${a === undefined ? 1 : a})`;
+}
+
+/* ---------------- toast + hint ---------------- */
+let toastTimer = 0, hintTimer = 0;
+function toast(msg, ms = 2400) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+function showHint(sec) {
+  hintEl.classList.add('show');
+  clearTimeout(hintTimer);
+  if (sec) hintTimer = setTimeout(() => hintEl.classList.remove('show'), sec * 1000);
 }
 
 /* ---------------- layout ---------------- */
@@ -97,14 +135,15 @@ function resize() {
   // with a 90/270 picture rotation the scene is laid out on the swapped screen size
   vw = sc.width = (ROT % 2) ? cv.height : cv.width;
   vh = sc.height = (ROT % 2) ? cv.width : cv.height;
-  W = SIDE === 'full' ? vw : vw * 2;          // whole world width (two screens side by side)
+  const gapPx = GAP * vw;                      // dark floor between the two projected areas
+  W = SIDE === 'full' ? vw : vw * 2 + gapPx;   // whole world width (screen + gap + screen)
   H = vh;
-  offset = SIDE === 'right' ? vw : 0;          // where this screen starts in the world
+  offset = SIDE === 'right' ? vw + gapPx : 0;  // where this screen starts in the world
   if (OVAL) {
-    geo = { cx: W / 2, cyc: H * 0.5, ry: H * 0.36, rx: W * 0.40, tw: H * 0.15 };
+    geo = { cx: W / 2, cyc: H * 0.5, ry: H * 0.39, rx: W * 0.43, tw: H * 0.15 };
   } else {
-    const ry = H * 0.74;
-    geo = { cx: W / 2, cyc: H * 0.86, ry: ry, rx: ROUND ? ry : W * 0.40, tw: H * 0.15 };
+    const ry = H * 0.94;
+    geo = { cx: W / 2, cyc: H * 1.05, ry: ry, rx: ROUND ? ry : W * 0.44, tw: H * 0.15 };
   }
   buildTrack();
   buildItems();
@@ -134,21 +173,25 @@ function buildTrack() {
 
   // neon outer glow
   t.save();
-  t.shadowColor = 'rgba(255,31,180,0.95)';
+  t.shadowColor = 'rgba(170,70,255,0.95)';
   t.shadowBlur = H * 0.05;
-  t.strokeStyle = 'rgba(255,31,180,0.55)';
+  t.strokeStyle = 'rgba(170,70,255,0.55)';
   t.lineWidth = tw + cb * 2;
   path(t, 0); t.stroke();
   t.restore();
 
-  // curbs: neon yellow base + hot pink dashes
+  // curbs: neon yellow base, with neon pink and neon green blocks alternating on top
   t.lineWidth = tw + cb * 2;
   t.strokeStyle = YELLOW;
   path(t, 0); t.stroke();
   t.strokeStyle = PINK;
-  t.setLineDash([cb * 3, cb * 3]);
+  t.setLineDash([cb * 3, cb * 9]);
+  path(t, 0); t.stroke();
+  t.strokeStyle = GREEN;
+  t.lineDashOffset = -cb * 6;
   path(t, 0); t.stroke();
   t.setLineDash([]);
+  t.lineDashOffset = 0;
 
   // road: vivid purple
   t.lineWidth = tw;
@@ -187,16 +230,18 @@ function buildTrack() {
     }
     t.restore();
   } else {
-    // START line (left leg): white band with neon pink blocks
+    // START line (left leg): white band with neon green blocks
     const sx = cx - rx - tw / 2, sh = tw * 0.22;
     t.save();
     t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.02;
     t.fillStyle = WHITE;
     t.fillRect(sx, cyc - sh, tw, sh);
     t.restore();
-    t.fillStyle = PINK;
     const nb = 6, bw = tw / nb;
-    for (let i = 0; i < nb; i += 2) t.fillRect(sx + i * bw, cyc - sh, bw, sh * 0.5);
+    for (let i = 0; i < nb; i += 2) {
+      t.fillStyle = (i / 2) % 2 === 0 ? PINK : GREEN;
+      t.fillRect(sx + i * bw, cyc - sh, bw, sh * 0.5);
+    }
 
     // FINISH line (right leg): checkered
     const fx = cx + rx - tw / 2, cs = tw / 8;
@@ -229,7 +274,7 @@ function buildItems() {
   items = [];
   const rnd = mulberry32(7);
   const N = OVAL ? 14 : 10;
-  const { cx, tw } = geo;
+  const { tw } = geo;
   for (let i = 0; i < N; i++) {
     const a = OVAL ? (i + 0.5) / N * 2 * Math.PI : Math.PI + (i + 0.5) / N * Math.PI;
     const o = (rnd() - 0.5) * tw * 0.45;
@@ -237,11 +282,11 @@ function buildItems() {
     const p = trackPt(a, o);
     const lx = p.x - offset;
     if (SIDE !== 'full') {
-      if (lx < 0 || lx > vw) continue;                 // belongs to the other screen
-      if (Math.abs(p.x - cx) < vw * 0.07) continue;    // keep clear of the seam
+      // other screen, the gap, or too close to a screen edge / seam
+      if (lx < vw * 0.05 || lx > vw * 0.95) continue;
     }
     const kind = i % 2;                                  // 0 mushroom, 1 gift
-    items.push({ x: lx, y: p.y, kind, hue: HUES[(i >> 1) % 3], phase, alive: true, grow: 1 });
+    items.push({ x: lx, y: p.y, kind, hue: HUES[(i >> 1) % HUES.length], phase, alive: true, grow: 1 });
   }
 }
 let clearedAt = 0;
@@ -252,66 +297,243 @@ function reviveAll() {
 
 /* ---------------- particles ---------------- */
 const parts = [], rings = [];
-const PAL = [56, 322, 280, -1, 56, 322];
+const PAL = [56, 120, 322, 280, -1, 322, 120, 56];
 
 function emit(x, y, n, burst) {
   for (let i = 0; i < n; i++) {
     if (parts.length > 1400) return;
     const ang = Math.random() * 6.283;
-    const sp = burst ? 40 + Math.random() * 160 : 6 + Math.random() * 40;
+    // sparkles stay put where the movement was (tiny drift, short life) so they track you closely
+    const sp = burst ? 40 + Math.random() * 160 : 2 + Math.random() * 8;
     parts.push({
-      x: x + (Math.random() - 0.5) * (burst ? 4 : 20),
-      y: y + (Math.random() - 0.5) * (burst ? 4 : 20),
-      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - (burst ? 0 : 14),
-      life: 0, max: burst ? 0.8 + Math.random() * 0.7 : 0.9 + Math.random() * 1.0,
+      x: x + (Math.random() - 0.5) * (burst ? 4 : 16),
+      y: y + (Math.random() - 0.5) * (burst ? 4 : 16),
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - (burst ? 0 : 2),
+      life: 0, max: burst ? 0.8 + Math.random() * 0.7 : 0.4 + Math.random() * 0.45,
       r: (burst ? 3 : 2) + Math.random() * 2.6,
       h: PAL[(Math.random() * PAL.length) | 0]
     });
   }
 }
 
-/* ---------------- camera motion ---------------- */
-const GW = 64, GH = 36;
+/* ---------------- camera motion (same method as the autumn grove) ---------------- */
+const GW = 96, GH = 54;        // finer motion grid (overhead view needs to be precise)
 const sm = document.createElement('canvas'); sm.width = GW; sm.height = GH;
 const sctx = sm.getContext('2d', { willReadFrequently: true });
-const bg = new Float32Array(GW * GH);
+const bg = new Float32Array(GW * GH);      // previous (smoothed) frame
 const moving = new Uint8Array(GW * GH);
-let haveBg = false, camOK = false;
+const raw = new Float32Array(GW * GH);
+const lumv = new Float32Array(GW * GH);
+const lumb = new Float32Array(GW * GH);   // blurred brightness
+const raw2 = new Float32Array(GW * GH);
+const mfield = new Float32Array(GW * GH); // motion that lingers ~0.3 s so arms and legs stay lit
+let lastVT = -1;
+const cand = new Float32Array(GW * GH);
+const lab = new Int16Array(GW * GH);
+const stk = new Int16Array(GW * GH);
+let haveBg = false, camOK = false, stream = null, devices = [], devIdx = 0;
+let lock = null, zoneEdit = false, dragA = null;
+const LOCK_R = 16, LOCK_HOLD = 5000;       // grid cells around the person that still count; ms before the lock is dropped
+const MODE_NAMES = ['All movement', 'Only inside the zone', 'One person (largest mover in the zone)'];
 
-async function startCam() {
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; camOK = false;
+}
+async function startCam(id) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('Camera API not available. Use Chrome or Edge (https or localhost).');
+  }
+  stopCamera();
+  const v = { width: { ideal: 640 }, height: { ideal: 480 } };
+  if (id) v.deviceId = { exact: id };
+  stream = await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
+  vid.srcObject = stream;
+  await vid.play();
+  camOK = true; haveBg = false; lastVT = -1;
+  const list = await navigator.mediaDevices.enumerateDevices();
+  devices = list.filter(d => d.kind === 'videoinput');
+  const tr = stream.getVideoTracks()[0];
+  const sid = tr.getSettings().deviceId;
+  devIdx = Math.max(0, devices.findIndex(d => d.deviceId === sid));
+  const isDepth = l => /depth|infrared|\bir\b|stereo/i.test(l || '') && !/rgb|colou?r/i.test(l || '');
+  if (!id && isDepth(tr.label)) {              // RealSense: prefer its RGB camera over depth / infrared
+    const rgb = devices.find(d => !isDepth(d.label) && d.deviceId !== sid);
+    if (rgb) { devIdx = devices.indexOf(rgb); return startCam(rgb.deviceId); }
+  }
+  toast('Camera ' + (devIdx + 1) + '/' + devices.length + ': ' + (tr.label || 'camera') + (devices.length > 1 ? '  (C = next)' : ''), 4000);
+}
+async function listCameras() {
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
-    vid.srcObject = s;
-    await vid.play();
-    camOK = true;
-  } catch (e) { camOK = false; }   // falls back to mouse for testing
+    const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    toast(l.length + ' camera(s) seen: ' + (l.map(d => d.label || '(no name yet)').join(' | ') || 'none'), 9000);
+  } catch (e) { toast('Could not list cameras', 4000); }
+}
+async function nextCamera() {
+  try {
+    const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    if (l.length) devices = l;
+  } catch (e) { }
+  if (devices.length < 2) { listCameras(); return; }
+  devIdx = (devIdx + 1) % devices.length;
+  startCam(devices[devIdx].deviceId).catch(e => toast(e.message || 'Could not open that camera', 4000));
 }
 
-function analyze() {
-  moving.fill(0);
-  if (!camOK || vid.readyState < 2) return;
+/* focus filters: zone + "one person" lock */
+function filterCandidates(now) {
+  if (PMODE >= 1 && ZONE) {
+    const x0 = ZONE.x0 * GW, x1 = ZONE.x1 * GW, y0 = ZONE.y0 * GH, y1 = ZONE.y1 * GH;
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      if (x + 0.5 < x0 || x + 0.5 > x1 || y + 0.5 < y0 || y + 0.5 > y1) cand[y * GW + x] = 0;
+    }
+  }
+  if (PMODE < 2) return;
+
+  // group moving cells into blobs
+  lab.fill(0);
+  const comps = [];
+  for (let i = 0; i < cand.length; i++) {
+    if (cand[i] <= 0 || lab[i]) continue;
+    const id = comps.length + 1;
+    let sp = 0, area = 0, sx = 0, sy = 0;
+    stk[sp++] = i; lab[i] = id;
+    while (sp) {
+      const j = stk[--sp], cx = j % GW, cy = (j / GW) | 0;
+      area++; sx += cx; sy += cy;
+      if (cx > 0 && cand[j - 1] > 0 && !lab[j - 1]) { lab[j - 1] = id; stk[sp++] = j - 1; }
+      if (cx < GW - 1 && cand[j + 1] > 0 && !lab[j + 1]) { lab[j + 1] = id; stk[sp++] = j + 1; }
+      if (cy > 0 && cand[j - GW] > 0 && !lab[j - GW]) { lab[j - GW] = id; stk[sp++] = j - GW; }
+      if (cy < GH - 1 && cand[j + GW] > 0 && !lab[j + GW]) { lab[j + GW] = id; stk[sp++] = j + GW; }
+    }
+    comps.push({ id, area, x: sx / area, y: sy / area });
+  }
+
+  if (!lock) {                                  // nobody followed yet: the largest big-enough mover becomes "the person"
+    let best = null;
+    for (const c of comps) if (c.area >= MINAREA && (!best || c.area > best.area)) best = c;
+    if (best) lock = { x: best.x, y: best.y, t: now };
+  }
+  const keep = new Uint8Array(comps.length + 1);
+  if (lock) {
+    let sx = 0, sy = 0, sa = 0;
+    for (const c of comps) {
+      if (Math.hypot(c.x - lock.x, (c.y - lock.y) * 1.6) <= LOCK_R) {   // arms / legs near the person count too
+        keep[c.id] = 1; sx += c.x * c.area; sy += c.y * c.area; sa += c.area;
+      }
+    }
+    if (sa > 0) { lock.x += (sx / sa - lock.x) * 0.6; lock.y += (sy / sa - lock.y) * 0.6; lock.t = now; }
+    else if (now - lock.t > LOCK_HOLD) lock = null;
+  }
+  for (let i = 0; i < cand.length; i++) if (cand[i] > 0 && !keep[lab[i]]) cand[i] = 0;
+}
+
+function analyze(dt) {
+  const n = GW * GH;
+  // motion lingers briefly, so it doesn't flicker between camera frames
+  const dec = Math.pow(0.1, dt);
+  for (let i = 0; i < n; i++) mfield[i] *= dec;
+  // only look at a camera frame once (the page redraws faster than the camera delivers)
+  if (camOK && vid.readyState >= 2 && vid.currentTime !== lastVT) {
+    lastVT = vid.currentTime;
+    newCameraFrame();
+  }
+  for (let i = 0; i < n; i++) moving[i] = mfield[i] > 0.3 ? 1 : 0;
+}
+
+function newCameraFrame() {
+  sctx.imageSmoothingEnabled = true;
+  sctx.imageSmoothingQuality = 'high';
   sctx.setTransform(1, 0, 0, 1, 0, 0);
-  sctx.translate(GW / 2, GH / 2);
+  // camera -> screen mapping: shift (camx/camy), zoom, rotate, mirror/flip
+  sctx.translate(GW / 2 + CAMX * GW, GH / 2 + CAMY * GH);
   sctx.rotate(CAMROT * Math.PI / 2);
-  sctx.scale(MIRROR ? -1 : 1, FLIP ? -1 : 1);
+  sctx.scale((MIRROR ? -1 : 1) * CAMZOOM, (FLIP ? -1 : 1) * CAMZOOM);
   sctx.drawImage(vid, -GW / 2, -GH / 2, GW, GH);
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   const d = sctx.getImageData(0, 0, GW, GH).data;
-  const thr = 24 / SENS;
-  let count = 0;
-  for (let i = 0; i < GW * GH; i++) {
-    const lum = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
-    if (!haveBg) bg[i] = lum;
-    if (Math.abs(lum - bg[i]) > thr) { moving[i] = 1; count++; }
-    bg[i] += (lum - bg[i]) * 0.08;
+  const n = GW * GH;
+
+  for (let i = 0; i < n; i++) lumv[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+  // 3x3 blur: removes sensor noise, so the threshold can stay low enough to catch arms
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      let sum = 0, c = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
+          sum += lumv[yy * GW + xx]; c++;
+        }
+      }
+      lumb[y * GW + x] = sum / c;
+    }
   }
-  haveBg = true;
-  const cover = count / (GW * GH);
-  if (cover > 0.5) { moving.fill(0); return; }   // camera bump / lighting change: ignore
+
+  // frame-to-frame change: you only light up while you move
+  const thr = 14 / SENS, range = 30 / SENS;
+  let over = 0;
+  for (let i = 0; i < n; i++) {
+    const diff = haveBg ? Math.abs(lumb[i] - bg[i]) : 0;
+    raw[i] = diff > thr ? Math.min(1, 0.4 + (diff - thr) / range) : 0;
+    if (diff > thr) over++;
+  }
+  for (let i = 0; i < n; i++) bg[i] = bg[i] * 0.4 + lumb[i] * 0.6;
+  if (!haveBg) { haveBg = true; return; }
+  if (over > n * 0.55) return;                   // auto-exposure flash: ignore this frame
+
+  // drop lone flickering cells (real movement comes in clumps)
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      const i = y * GW + x;
+      raw2[i] = 0;
+      if (raw[i] <= 0) continue;
+      let nb = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
+          if (raw[yy * GW + xx] > 0) nb++;
+        }
+      }
+      if (nb >= 1) raw2[i] = raw[i];
+    }
+  }
+
+  // grow movement outward (radius 2) so a moving body / arm reads as one solid shape, not just its edges
+  const R = 2;
+  cand.fill(0);
+  let count = 0;
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      let best = 0;
+      for (let dy = -R; dy <= R; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
+        for (let dx = -R; dx <= R; dx++) {
+          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
+          const v = raw2[yy * GW + xx];
+          if (v <= 0) continue;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > R + 0.5) continue;
+          const vv = v * (1 - dist * 0.1);
+          if (vv > best) best = vv;
+        }
+      }
+      if (best > 0.32) { cand[y * GW + x] = best; count++; }
+    }
+  }
+  if (count / n > 0.5) return;                   // camera bump / lighting change: ignore
+  filterCandidates(performance.now());
+
   const cells = [];
-  for (let i = 0; i < moving.length; i++) if (moving[i]) cells.push(i);
+  for (let i = 0; i < n; i++) {
+    if (cand[i] > 0) {
+      if (cand[i] > mfield[i]) mfield[i] = cand[i];
+      cells.push(i);
+    }
+  }
   if (cells.length) {
-    const p = Math.min(1, 14 / cells.length);
+    const p = Math.min(1, 26 / cells.length);
     for (const i of cells) {
       if (Math.random() < p) {
         emit(((i % GW) + 0.5) / GW * vw, (Math.floor(i / GW) + 0.5) / GH * vh, 1, false);
@@ -338,14 +560,41 @@ function collect(it) {
   if (!items.some(i => i.alive)) clearedAt = performance.now();
 }
 
-/* mouse (testing without a camera) */
+/* screen position -> scene position (undo the picture rotation) */
+function toScene(cx, cy) {
+  const dx = cx - cv.width / 2, dy = cy - cv.height / 2;
+  const ca = Math.cos(-ROT * Math.PI / 2), sa = Math.sin(-ROT * Math.PI / 2);
+  return { x: dx * ca - dy * sa + vw / 2, y: dx * sa + dy * ca + vh / 2 };
+}
+function normRect(a, bx, by) {
+  return { x0: Math.min(a.x, bx), y0: Math.min(a.y, by), x1: Math.max(a.x, bx), y1: Math.max(a.y, by) };
+}
+
+/* mouse: sparkles for testing without a camera; also draws the zone */
 let mouse = null;
 window.addEventListener('pointermove', e => {
-  // screen position -> scene position (undo the picture rotation)
-  const dx = e.clientX - cv.width / 2, dy = e.clientY - cv.height / 2;
-  const ca = Math.cos(-ROT * Math.PI / 2), sa = Math.sin(-ROT * Math.PI / 2);
-  mouse = { x: dx * ca - dy * sa + vw / 2, y: dx * sa + dy * ca + vh / 2 };
-  emit(mouse.x, mouse.y, 3, false);
+  const p = toScene(e.clientX, e.clientY);
+  if (zoneEdit) {
+    if (dragA) dragA.rect = normRect(dragA, clamp(p.x / vw, 0, 1), clamp(p.y / vh, 0, 1));
+    return;
+  }
+  mouse = p;
+  emit(p.x, p.y, 3, false);
+});
+window.addEventListener('pointerdown', e => {
+  if (!zoneEdit) return;
+  const p = toScene(e.clientX, e.clientY);
+  const x = clamp(p.x / vw, 0, 1), y = clamp(p.y / vh, 0, 1);
+  dragA = { x, y, rect: normRect({ x, y }, x, y) };
+});
+window.addEventListener('pointerup', () => {
+  if (!zoneEdit || !dragA) return;
+  const r = dragA.rect; dragA = null;
+  if (r.x1 - r.x0 > 0.05 && r.y1 - r.y0 > 0.05) {
+    ZONE = r; lock = null; saveSettings();
+    if (PMODE === 0) { PMODE = 1; saveSettings(); toast('Zone set. Mode: ' + MODE_NAMES[PMODE] + '  (P to change)', 3500); }
+    else toast('Zone set', 2000);
+  }
 });
 
 /* ---------------- drawing helpers ---------------- */
@@ -378,7 +627,7 @@ function drawItem(it, tm) {
   glow(0, 0, s * (2.1 + Math.sin(tm * 2.4 + it.phase) * 0.25), it.hue, 0.6);
   ctx.globalCompositeOperation = 'source-over';
 
-  // white outline ring so they pop even on the purple road
+  // white outline so they pop even on the purple road
   ctx.lineWidth = s * 0.09;
   ctx.strokeStyle = '#ffffff';
 
@@ -422,8 +671,37 @@ function drawCalibration() {
   ctx.strokeStyle = '#00ffd0'; ctx.lineWidth = 6;
   ctx.strokeRect(3, 3, vw - 6, vh - 6);
   ctx.fillStyle = '#00ffd0';
-  ctx.fillText(`${SIDE.toUpperCase()} ${OVAL ? 'oval' : 'arch'} ${vw}x${vh}  camera:${camOK ? 'on' : 'off'}  mirror:${MIRROR ? 1 : 0} flip:${FLIP ? 1 : 0} rot:${ROT * 90} camrot:${CAMROT * 90} sens:${SENS.toFixed(1)}`, 14, vh - 14);
+  ctx.fillText(`${SIDE.toUpperCase()} ${OVAL ? 'oval' : 'arch'} ${vw}x${vh}  camera:${camOK ? 'on' : 'off'}  mirror:${MIRROR ? 1 : 0} flip:${FLIP ? 1 : 0} rot:${ROT * 90} camrot:${CAMROT * 90} gap:${GAP.toFixed(2)} zoom:${CAMZOOM.toFixed(2)} camx:${CAMX.toFixed(2)} camy:${CAMY.toFixed(2)} sens:${SENS.toFixed(1)}`, 14, vh - 14);
   ctx.restore();
+}
+
+// D: shows exactly which cells are sensed, on top of the real picture, so you can check alignment
+function drawFocusOverlay() {
+  let z = ZONE;
+  if (zoneEdit && dragA) z = dragA.rect;
+  if (z && (zoneEdit || debug)) {
+    const x0 = z.x0 * vw, y0 = z.y0 * vh, x1 = z.x1 * vw, y1 = z.y1 * vh;
+    if (zoneEdit) {                              // dim everything outside the active area
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, vw, y0); ctx.fillRect(0, y1, vw, vh - y1);
+      ctx.fillRect(0, y0, x0, y1 - y0); ctx.fillRect(x1, y0, vw - x1, y1 - y0);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([]);
+  }
+  if (debug) {
+    const cw = vw / GW, chh = vh / GH;
+    for (let i = 0; i < mfield.length; i++) {
+      const v = mfield[i];
+      if (v < 0.05) continue;
+      ctx.fillStyle = `rgba(0,255,255,${Math.min(0.55, v * 0.6)})`;
+      ctx.fillRect((i % GW) * cw, ((i / GW) | 0) * chh, cw + 0.5, chh + 0.5);
+    }
+    if (lock) {                                  // ring where the followed person is
+      ctx.strokeStyle = 'rgba(120,255,160,0.95)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc((lock.x + 0.5) / GW * vw, (lock.y + 0.5) / GH * vh, LOCK_R / GW * vw * 0.5, 0, 6.283); ctx.stroke();
+    }
+  }
 }
 
 /* ---------------- main loop ---------------- */
@@ -432,13 +710,21 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const tm = now / 1000;
 
-  analyze();
+  analyze(dt);
+
+  // demo mover (A): a fake person walking a loop, for testing without anyone on the floor
+  let demoPt = null;
+  if (demo) {
+    demoPt = { x: vw * (0.5 + 0.38 * Math.sin(tm * 0.35)), y: vh * (0.6 + 0.3 * Math.sin(tm * 0.53 + 1)) };
+    emit(demoPt.x, demoPt.y, 3, false);
+  }
 
   const r = geo.tw * 0.5;
   for (const it of items) {
     if (!it.alive) continue;
-    if (camOK && camHits(it, r) >= 2) collect(it);
+    if (camOK && camHits(it, r) >= 3) collect(it);
     else if (mouse && Math.hypot(mouse.x - it.x, mouse.y - it.y) < r * 0.8) collect(it);
+    else if (demoPt && Math.hypot(demoPt.x - it.x, demoPt.y - it.y) < r * 0.8) collect(it);
   }
   // grow back after the last pickup on this half is gone (local, no sync needed)
   if (items.length && !items.some(i => i.alive) && now - clearedAt > RESPAWN_MS) reviveAll();
@@ -477,6 +763,7 @@ function frame(now) {
   }
   ctx.globalCompositeOperation = 'source-over';
 
+  drawFocusOverlay();
   if (showCal) drawCalibration();
 
   // present: rotate the finished scene onto the visible canvas
@@ -489,27 +776,67 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+/* ---------------- keyboard ---------------- */
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+}
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k.startsWith('arrow')) e.preventDefault();
-  if (k === 'c') showCal = !showCal;
-  else if (k === 'm') MIRROR = !MIRROR;
-  else if (k === 'v') FLIP = !FLIP;
-  else if (k === '[' || k === '-' || k === '_') SENS = Math.max(0.3, SENS - 0.1);
-  else if (k === ']' || k === '=' || k === '+') SENS = Math.min(3, SENS + 0.1);
-  else if (k === 'arrowleft')  { ROT = (ROT + 3) % 4; resize(); }     // rotate picture 90 deg left
-  else if (k === 'arrowright') { ROT = (ROT + 1) % 4; resize(); }     // rotate picture 90 deg right
-  else if (k === 'arrowup')    CAMROT = (CAMROT + 1) % 4;             // rotate camera 90 deg
-  else if (k === 'arrowdown')  CAMROT = (CAMROT + 3) % 4;
-  else if (k === 'r') reviveAll();
-  else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+  let persist = true;
+
+  if (k === 'f') { toggleFullscreen(); persist = false; }
+  else if (k === 'm') { MIRROR = !MIRROR; haveBg = false; toast('Mirror ' + (MIRROR ? 'on' : 'off')); }
+  else if (k === 'v') { FLIP = !FLIP; haveBg = false; toast('Flip ' + (FLIP ? 'on' : 'off')); }
+  else if (k === 'c') { nextCamera(); persist = false; }
+  else if (k === 'i') { listCameras(); persist = false; }
+  else if (k === 'd') { debug = !debug; toast('Motion view ' + (debug ? 'on: cyan = what is sensed' : 'off')); persist = false; }
+  else if (k === 'a') { demo = !demo; toast('Demo mover ' + (demo ? 'on' : 'off')); persist = false; }
+  else if (k === 'h') { hintEl.classList.toggle('show'); persist = false; }
+  else if (k === 'g') { showCal = !showCal; persist = false; }
+  else if (k === 'r') { reviveAll(); persist = false; }
+  else if (k === '-' || k === '_') { SENS = Math.max(0.4, SENS / 1.2); toast('Sensitivity ' + SENS.toFixed(2)); }
+  else if (k === '=' || k === '+') { SENS = Math.min(4, SENS * 1.2); toast('Sensitivity ' + SENS.toFixed(2)); }
+  else if (k === 'arrowleft' || k === 'arrowright' || k === 'arrowup' || k === 'arrowdown') {
+    if (e.shiftKey) {                                               // Shift+arrows: move the camera view
+      if (k === 'arrowleft') CAMX -= 0.02;
+      else if (k === 'arrowright') CAMX += 0.02;
+      else if (k === 'arrowup') CAMY -= 0.02;
+      else CAMY += 0.02;
+      haveBg = false;
+    } else if (k === 'arrowleft') { ROT = (ROT + 3) % 4; resize(); toast('Picture rotated ' + ROT * 90 + '°'); }
+    else if (k === 'arrowright') { ROT = (ROT + 1) % 4; resize(); toast('Picture rotated ' + ROT * 90 + '°'); }
+    else if (k === 'arrowup') { CAMROT = (CAMROT + 1) % 4; haveBg = false; toast('Camera rotated ' + CAMROT * 90 + '°'); }
+    else { CAMROT = (CAMROT + 3) % 4; haveBg = false; toast('Camera rotated ' + CAMROT * 90 + '°'); }
+  }
+  else if (k === ',') { CAMZOOM = Math.max(0.4, CAMZOOM - 0.05); haveBg = false; toast('Camera view ' + CAMZOOM.toFixed(2) + ' (shrink)'); }
+  else if (k === '.') { CAMZOOM = Math.min(4, CAMZOOM + 0.05); haveBg = false; toast('Camera view ' + CAMZOOM.toFixed(2) + ' (fill)'); }
+  else if (k === '0') { CAMZOOM = 1; CAMX = 0; CAMY = 0; haveBg = false; toast('Camera fit reset'); }
+  else if (k === '1') { GAP = Math.max(0, GAP - 0.05); resize(); toast('Gap ' + GAP.toFixed(2)); }
+  else if (k === '2') { GAP = Math.min(3, GAP + 0.05); resize(); toast('Gap ' + GAP.toFixed(2)); }
+  else if (k === 'p') {
+    PMODE = (PMODE + 1) % 3; lock = null;
+    toast('Mode: ' + MODE_NAMES[PMODE] + ((PMODE > 0 && !ZONE) ? '  (no zone drawn yet: press Z)' : ''), 3500);
+  }
+  else if (k === 'z') {
+    zoneEdit = !zoneEdit; dragA = null;
+    document.body.style.cursor = zoneEdit ? 'crosshair' : 'none';
+    toast(zoneEdit ? 'Drag on the screen to draw the active area. Press Z again when done.' : 'Zone editing off', 3500);
+    persist = false;
+  }
+  else if (k === 'x') { ZONE = null; lock = null; toast('Zone cleared: whole view is active'); }
+  else if (k === 'l') { lock = null; toast('Released: the next person to move will be followed'); persist = false; }
+  else if (k === '[') { MINAREA = Math.max(3, MINAREA - 3); toast('Minimum size to follow: ' + MINAREA); }
+  else if (k === ']') { MINAREA = Math.min(120, MINAREA + 3); toast('Minimum size to follow: ' + MINAREA); }
   else return;
-  saveSettings();
+  if (persist) saveSettings();
 });
 window.addEventListener('resize', resize);
 
 resize();
-startCam();
+startCam().catch(e => toast((e && e.message) || 'Could not open the camera. Mouse still works for testing.', 5000));
+if (q.get('hint') !== '0') showHint(10);
 requestAnimationFrame(frame);
 </script>
 </body>
