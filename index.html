@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kart Track Floor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  video { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<video id="v" autoplay playsinline muted></video>
+
+<script>
+/*
+  KART TRACK - two-projector floor version (webcam only, no installs)
+  Neon palette: yellow / hot pink / purple / white (reads on a dark floor with lights on)
+
+  SAME FILE on both NUCs, only the URL differs:
+    Left  projector NUC :  kart_track.html?side=left
+    Right projector NUC :  kart_track.html?side=right
+    Single screen test  :  kart_track.html
+
+  Track shape:
+    (default)      semi-circle arch, start on left leg, finish on right leg
+    &track=oval    full closed oval loop across both screens, checkered start/finish line
+    &round=1       arch only: narrower, truer semicircle
+
+  Other URL settings:
+    &mirror=1  flip camera left/right      &flip=1  flip camera up/down
+    &sens=1.5  more sensitive (0.5 = less) &respawn=4000  ms before pickups grow back
+
+  Keys (settings are remembered per browser, so each NUC / GitHub Pages visit keeps its own):
+    Left / Right arrows  rotate the picture 90 degrees
+    Up / Down arrows     rotate the camera input 90 degrees
+    M  mirror camera     V  flip camera     - / +  (or [ / ])  sensitivity
+    C  calibration grid + seam line         R  bring pickups back   F  fullscreen
+  URL equivalents: &rot=0-3  &camrot=0-3  &mirror=1  &flip=1  &sens=1.2
+*/
+
+const q = new URLSearchParams(location.search);
+const SIDE = (q.get('side') || 'full').toLowerCase();       // left | right | full
+const OVAL = (q.get('track') || '').toLowerCase() === 'oval';
+// settings: URL params win, otherwise whatever was last set with the keyboard on this browser
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem('kart_' + SIDE) || '{}'); } catch (e) {}
+const pick = (n, d) => q.has(n) ? q.get(n) : (saved[n] !== undefined ? saved[n] : d);
+let MIRROR = String(pick('mirror', 0)) === '1';
+let FLIP = String(pick('flip', 0)) === '1';
+let SENS = parseFloat(pick('sens', 1));
+let ROT = ((parseInt(pick('rot', 0), 10) % 4) + 4) % 4;        // picture rotation, 90 degree steps
+let CAMROT = ((parseInt(pick('camrot', 0), 10) % 4) + 4) % 4;  // camera rotation, 90 degree steps
+function saveSettings() {
+  try {
+    localStorage.setItem('kart_' + SIDE, JSON.stringify({
+      mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0, sens: SENS, rot: ROT, camrot: CAMROT
+    }));
+  } catch (e) {}
+}
+const ROUND = q.get('round') === '1';
+const RESPAWN_MS = parseInt(q.get('respawn') || '4000', 10);
+
+/* neon colours */
+const YELLOW = '#fff200', PINK = '#ff1fb4', PURPLE = '#a926ff', WHITE = '#ffffff';
+const HUES = [56, 322, 280];   // yellow, pink, purple (hsl hues). -1 = white
+
+const cv = document.getElementById('c');
+const dctx = cv.getContext('2d');           // what the projector shows
+const sc = document.createElement('canvas'); // the scene is drawn here, then rotated onto cv
+const ctx = sc.getContext('2d');
+const vid = document.getElementById('v');
+
+let vw, vh, W, H, offset, geo, trackLayer, items = [], ambient = [];
+let showCal = false;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function hsl(h, l, a) {
+  if (h < 0) return `hsla(0,0%,100%,${a === undefined ? 1 : a})`;
+  return `hsla(${h},100%,${l}%,${a === undefined ? 1 : a})`;
+}
+
+/* ---------------- layout ---------------- */
+function resize() {
+  cv.width = window.innerWidth;
+  cv.height = window.innerHeight;
+  // with a 90/270 picture rotation the scene is laid out on the swapped screen size
+  vw = sc.width = (ROT % 2) ? cv.height : cv.width;
+  vh = sc.height = (ROT % 2) ? cv.width : cv.height;
+  W = SIDE === 'full' ? vw : vw * 2;          // whole world width (two screens side by side)
+  H = vh;
+  offset = SIDE === 'right' ? vw : 0;          // where this screen starts in the world
+  if (OVAL) {
+    geo = { cx: W / 2, cyc: H * 0.5, ry: H * 0.36, rx: W * 0.40, tw: H * 0.15 };
+  } else {
+    const ry = H * 0.74;
+    geo = { cx: W / 2, cyc: H * 0.86, ry: ry, rx: ROUND ? ry : W * 0.40, tw: H * 0.15 };
+  }
+  buildTrack();
+  buildItems();
+}
+
+// point on the track centreline (plus radial offset o) at angle a
+function trackPt(a, o) {
+  return {
+    x: geo.cx + (geo.rx + o) * Math.cos(a),
+    y: geo.cyc + (geo.ry + o) * Math.sin(a)
+  };
+}
+
+/* ---------------- static track layer ---------------- */
+function buildTrack() {
+  trackLayer = document.createElement('canvas');
+  trackLayer.width = vw; trackLayer.height = vh;
+  const t = trackLayer.getContext('2d');
+  t.translate(-offset, 0);
+  const { cx, cyc, rx, ry, tw } = geo;
+  const cb = tw * 0.13;
+  const path = (g, d) => {
+    g.beginPath();
+    g.ellipse(cx, cyc, rx + d, ry + d, 0, OVAL ? 0 : Math.PI, 2 * Math.PI);
+  };
+  t.lineCap = 'butt';
+
+  // neon outer glow
+  t.save();
+  t.shadowColor = 'rgba(255,31,180,0.95)';
+  t.shadowBlur = H * 0.05;
+  t.strokeStyle = 'rgba(255,31,180,0.55)';
+  t.lineWidth = tw + cb * 2;
+  path(t, 0); t.stroke();
+  t.restore();
+
+  // curbs: neon yellow base + hot pink dashes
+  t.lineWidth = tw + cb * 2;
+  t.strokeStyle = YELLOW;
+  path(t, 0); t.stroke();
+  t.strokeStyle = PINK;
+  t.setLineDash([cb * 3, cb * 3]);
+  path(t, 0); t.stroke();
+  t.setLineDash([]);
+
+  // road: vivid purple
+  t.lineWidth = tw;
+  t.strokeStyle = PURPLE;
+  path(t, 0); t.stroke();
+
+  // bright white edge lines
+  t.strokeStyle = WHITE;
+  t.lineWidth = tw * 0.035;
+  path(t, tw * 0.44); t.stroke();
+  path(t, -tw * 0.44); t.stroke();
+
+  // white centre dashes
+  t.lineWidth = tw * 0.05;
+  t.strokeStyle = WHITE;
+  t.setLineDash([tw * 0.34, tw * 0.26]);
+  path(t, 0); t.stroke();
+  t.setLineDash([]);
+
+  if (OVAL) {
+    // one checkered start/finish line across the bottom-left of the loop
+    const a = Math.PI / 2 + 0.9;
+    const p = trackPt(a, 0);
+    const nx = Math.cos(a) / rx, ny = Math.sin(a) / ry;
+    const ang = Math.atan2(ny, nx);
+    const cs = tw / 8;
+    t.save();
+    t.translate(p.x, p.y);
+    t.rotate(ang);
+    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.015;
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 8; c++) {
+        t.fillStyle = (r + c) % 2 === 0 ? WHITE : '#000000';
+        t.fillRect(-tw / 2 + c * cs, (r - 1) * cs, cs, cs);
+      }
+    }
+    t.restore();
+  } else {
+    // START line (left leg): white band with neon pink blocks
+    const sx = cx - rx - tw / 2, sh = tw * 0.22;
+    t.save();
+    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.02;
+    t.fillStyle = WHITE;
+    t.fillRect(sx, cyc - sh, tw, sh);
+    t.restore();
+    t.fillStyle = PINK;
+    const nb = 6, bw = tw / nb;
+    for (let i = 0; i < nb; i += 2) t.fillRect(sx + i * bw, cyc - sh, bw, sh * 0.5);
+
+    // FINISH line (right leg): checkered
+    const fx = cx + rx - tw / 2, cs = tw / 8;
+    t.save();
+    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.015;
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 8; c++) {
+        t.fillStyle = (r + c) % 2 === 0 ? WHITE : '#000000';
+        t.fillRect(fx + c * cs, cyc - cs * 2 + r * cs, cs, cs);
+      }
+    }
+    t.restore();
+  }
+
+  // ambient twinkle points (same on both NUCs)
+  const rnd = mulberry32(21);
+  ambient = [];
+  for (let i = 0; i < 100; i++) {
+    const a = OVAL ? rnd() * 2 * Math.PI : Math.PI + rnd() * Math.PI;
+    const o = (rnd() - 0.5) * tw * 0.8;
+    const ph = rnd() * 6.28, sz = 1.2 + rnd() * 2.4;
+    const p = trackPt(a, o);
+    const x = p.x - offset;
+    if (x >= -5 && x <= vw + 5) ambient.push({ x, y: p.y, ph, sz });
+  }
+}
+
+/* ---------------- pickups ---------------- */
+function buildItems() {
+  items = [];
+  const rnd = mulberry32(7);
+  const N = OVAL ? 14 : 10;
+  const { cx, tw } = geo;
+  for (let i = 0; i < N; i++) {
+    const a = OVAL ? (i + 0.5) / N * 2 * Math.PI : Math.PI + (i + 0.5) / N * Math.PI;
+    const o = (rnd() - 0.5) * tw * 0.45;
+    const phase = rnd() * 6.28;
+    const p = trackPt(a, o);
+    const lx = p.x - offset;
+    if (SIDE !== 'full') {
+      if (lx < 0 || lx > vw) continue;                 // belongs to the other screen
+      if (Math.abs(p.x - cx) < vw * 0.07) continue;    // keep clear of the seam
+    }
+    const kind = i % 2;                                  // 0 mushroom, 1 gift
+    items.push({ x: lx, y: p.y, kind, hue: HUES[(i >> 1) % 3], phase, alive: true, grow: 1 });
+  }
+}
+let clearedAt = 0;
+
+function reviveAll() {
+  items.forEach((it, i) => { it.alive = true; it.grow = -i * 0.12; });
+}
+
+/* ---------------- particles ---------------- */
+const parts = [], rings = [];
+const PAL = [56, 322, 280, -1, 56, 322];
+
+function emit(x, y, n, burst) {
+  for (let i = 0; i < n; i++) {
+    if (parts.length > 1400) return;
+    const ang = Math.random() * 6.283;
+    const sp = burst ? 40 + Math.random() * 160 : 6 + Math.random() * 40;
+    parts.push({
+      x: x + (Math.random() - 0.5) * (burst ? 4 : 20),
+      y: y + (Math.random() - 0.5) * (burst ? 4 : 20),
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - (burst ? 0 : 14),
+      life: 0, max: burst ? 0.8 + Math.random() * 0.7 : 0.9 + Math.random() * 1.0,
+      r: (burst ? 3 : 2) + Math.random() * 2.6,
+      h: PAL[(Math.random() * PAL.length) | 0]
+    });
+  }
+}
+
+/* ---------------- camera motion ---------------- */
+const GW = 64, GH = 36;
+const sm = document.createElement('canvas'); sm.width = GW; sm.height = GH;
+const sctx = sm.getContext('2d', { willReadFrequently: true });
+const bg = new Float32Array(GW * GH);
+const moving = new Uint8Array(GW * GH);
+let haveBg = false, camOK = false;
+
+async function startCam() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+    vid.srcObject = s;
+    await vid.play();
+    camOK = true;
+  } catch (e) { camOK = false; }   // falls back to mouse for testing
+}
+
+function analyze() {
+  moving.fill(0);
+  if (!camOK || vid.readyState < 2) return;
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.translate(GW / 2, GH / 2);
+  sctx.rotate(CAMROT * Math.PI / 2);
+  sctx.scale(MIRROR ? -1 : 1, FLIP ? -1 : 1);
+  sctx.drawImage(vid, -GW / 2, -GH / 2, GW, GH);
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  const d = sctx.getImageData(0, 0, GW, GH).data;
+  const thr = 24 / SENS;
+  let count = 0;
+  for (let i = 0; i < GW * GH; i++) {
+    const lum = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+    if (!haveBg) bg[i] = lum;
+    if (Math.abs(lum - bg[i]) > thr) { moving[i] = 1; count++; }
+    bg[i] += (lum - bg[i]) * 0.08;
+  }
+  haveBg = true;
+  const cover = count / (GW * GH);
+  if (cover > 0.5) { moving.fill(0); return; }   // camera bump / lighting change: ignore
+  const cells = [];
+  for (let i = 0; i < moving.length; i++) if (moving[i]) cells.push(i);
+  if (cells.length) {
+    const p = Math.min(1, 14 / cells.length);
+    for (const i of cells) {
+      if (Math.random() < p) {
+        emit(((i % GW) + 0.5) / GW * vw, (Math.floor(i / GW) + 0.5) / GH * vh, 1, false);
+      }
+    }
+  }
+}
+
+function camHits(it, r) {
+  const gx = it.x / vw * GW, gy = it.y / vh * GH, rc = r / vw * GW;
+  let n = 0;
+  const x0 = Math.max(0, Math.floor(gx - rc)), x1 = Math.min(GW - 1, Math.ceil(gx + rc));
+  const y0 = Math.max(0, Math.floor(gy - rc)), y1 = Math.min(GH - 1, Math.ceil(gy + rc));
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++)
+      if (moving[y * GW + x] && Math.hypot(x - gx, y - gy) <= rc) n++;
+  return n;
+}
+
+function collect(it) {
+  it.alive = false;
+  emit(it.x, it.y, 34, true);
+  rings.push({ x: it.x, y: it.y, t: 0, h: it.hue });
+  if (!items.some(i => i.alive)) clearedAt = performance.now();
+}
+
+/* mouse (testing without a camera) */
+let mouse = null;
+window.addEventListener('pointermove', e => {
+  // screen position -> scene position (undo the picture rotation)
+  const dx = e.clientX - cv.width / 2, dy = e.clientY - cv.height / 2;
+  const ca = Math.cos(-ROT * Math.PI / 2), sa = Math.sin(-ROT * Math.PI / 2);
+  mouse = { x: dx * ca - dy * sa + vw / 2, y: dx * sa + dy * ca + vh / 2 };
+  emit(mouse.x, mouse.y, 3, false);
+});
+
+/* ---------------- drawing helpers ---------------- */
+function glow(x, y, r, h, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, hsl(h, 60, a));
+  g.addColorStop(1, hsl(h, 60, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+}
+
+function glint(x, y, r, h, a) {
+  ctx.fillStyle = hsl(h, 75, a);
+  ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, 6.283); ctx.fill();
+  ctx.fillRect(x - r * 2, y - 0.7, r * 4, 1.4);
+  ctx.fillRect(x - 0.7, y - r * 2, 1.4, r * 4);
+}
+
+function ease(k) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); }
+
+function drawItem(it, tm) {
+  const s = geo.tw * 0.34;
+  const k = it.grow >= 1 ? 1 : ease(Math.max(0, it.grow));
+  if (k <= 0.01) return;
+  const bob = Math.sin(tm * 2 + it.phase) * s * 0.08;
+  ctx.save();
+  ctx.translate(it.x, it.y + bob);
+  ctx.scale(k, k);
+  ctx.globalCompositeOperation = 'lighter';
+  glow(0, 0, s * (2.1 + Math.sin(tm * 2.4 + it.phase) * 0.25), it.hue, 0.6);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // white outline ring so they pop even on the purple road
+  ctx.lineWidth = s * 0.09;
+  ctx.strokeStyle = '#ffffff';
+
+  if (it.kind === 0) {            // glowing mushroom
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.roundRect(-s * 0.22, -s * 0.05, s * 0.44, s * 0.6, s * 0.15); ctx.fill();
+    ctx.fillStyle = hsl(it.hue, 55, 1);
+    ctx.beginPath(); ctx.ellipse(0, -s * 0.02, s * 0.78, s * 0.62, 0, Math.PI, 2 * Math.PI); ctx.closePath(); ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    [[-0.34, -0.3, 0.13], [0.08, -0.5, 0.15], [0.4, -0.22, 0.1]].forEach(p => {
+      ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, p[2] * s, 0, 6.283); ctx.fill();
+    });
+  } else {                        // gift box
+    ctx.rotate(Math.sin(tm * 1.5 + it.phase) * 0.08);
+    ctx.fillStyle = hsl(it.hue, 55, 1);
+    ctx.beginPath(); ctx.roundRect(-s * 0.5, -s * 0.42, s, s * 0.9, s * 0.12); ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-s * 0.09, -s * 0.42, s * 0.18, s * 0.9);
+    ctx.fillRect(-s * 0.5, s * 0.0, s, s * 0.16);
+    ctx.beginPath(); ctx.ellipse(-s * 0.2, -s * 0.52, s * 0.22, s * 0.13, -0.5, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(s * 0.2, -s * 0.52, s * 0.22, s * 0.13, 0.5, 0, 6.283); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCalibration() {
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.font = `${Math.round(H * 0.025)}px sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  for (let p = 0; p <= 100; p += 5) {
+    const x = p / 100 * W - offset;
+    if (x < -2 || x > vw + 2) continue;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, vh); ctx.stroke();
+    if (p % 10 === 0) ctx.fillText(p + '%', x + 4, 24);
+  }
+  for (let i = 1; i < 6; i++) { ctx.beginPath(); ctx.moveTo(0, vh * i / 6); ctx.lineTo(vw, vh * i / 6); ctx.stroke(); }
+  ctx.strokeStyle = '#00ffd0'; ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, vw - 6, vh - 6);
+  ctx.fillStyle = '#00ffd0';
+  ctx.fillText(`${SIDE.toUpperCase()} ${OVAL ? 'oval' : 'arch'} ${vw}x${vh}  camera:${camOK ? 'on' : 'off'}  mirror:${MIRROR ? 1 : 0} flip:${FLIP ? 1 : 0} rot:${ROT * 90} camrot:${CAMROT * 90} sens:${SENS.toFixed(1)}`, 14, vh - 14);
+  ctx.restore();
+}
+
+/* ---------------- main loop ---------------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const tm = now / 1000;
+
+  analyze();
+
+  const r = geo.tw * 0.5;
+  for (const it of items) {
+    if (!it.alive) continue;
+    if (camOK && camHits(it, r) >= 2) collect(it);
+    else if (mouse && Math.hypot(mouse.x - it.x, mouse.y - it.y) < r * 0.8) collect(it);
+  }
+  // grow back after the last pickup on this half is gone (local, no sync needed)
+  if (items.length && !items.some(i => i.alive) && now - clearedAt > RESPAWN_MS) reviveAll();
+  for (const it of items) if (it.alive && it.grow < 1) it.grow += dt * 1.3;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, vw, vh);
+  ctx.drawImage(trackLayer, 0, 0);
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const a of ambient) {
+    const al = 0.5 + 0.5 * Math.sin(tm * 1.6 + a.ph);
+    glint(a.x, a.y, a.sz, -1, al * 0.8);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  for (const it of items) if (it.alive) drawItem(it, tm);
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.life += dt;
+    if (p.life >= p.max) { parts.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vx *= 0.96; p.vy *= 0.96;
+    const k = 1 - p.life / p.max;
+    glint(p.x, p.y, p.r * (0.5 + k), p.h, Math.min(1, k * 1.2));
+  }
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const g = rings[i];
+    g.t += dt;
+    if (g.t > 0.7) { rings.splice(i, 1); continue; }
+    ctx.strokeStyle = hsl(g.h, 70, 1 - g.t / 0.7);
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(g.x, g.y, geo.tw * (0.2 + g.t * 0.9), 0, 6.283); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  if (showCal) drawCalibration();
+
+  // present: rotate the finished scene onto the visible canvas
+  dctx.setTransform(1, 0, 0, 1, 0, 0);
+  dctx.fillStyle = '#000';
+  dctx.fillRect(0, 0, cv.width, cv.height);
+  dctx.translate(cv.width / 2, cv.height / 2);
+  dctx.rotate(ROT * Math.PI / 2);
+  dctx.drawImage(sc, -vw / 2, -vh / 2);
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k.startsWith('arrow')) e.preventDefault();
+  if (k === 'c') showCal = !showCal;
+  else if (k === 'm') MIRROR = !MIRROR;
+  else if (k === 'v') FLIP = !FLIP;
+  else if (k === '[' || k === '-' || k === '_') SENS = Math.max(0.3, SENS - 0.1);
+  else if (k === ']' || k === '=' || k === '+') SENS = Math.min(3, SENS + 0.1);
+  else if (k === 'arrowleft')  { ROT = (ROT + 3) % 4; resize(); }     // rotate picture 90 deg left
+  else if (k === 'arrowright') { ROT = (ROT + 1) % 4; resize(); }     // rotate picture 90 deg right
+  else if (k === 'arrowup')    CAMROT = (CAMROT + 1) % 4;             // rotate camera 90 deg
+  else if (k === 'arrowdown')  CAMROT = (CAMROT + 3) % 4;
+  else if (k === 'r') reviveAll();
+  else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+  else return;
+  saveSettings();
+});
+window.addEventListener('resize', resize);
+
+resize();
+startCam();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
