@@ -449,11 +449,11 @@ function camHits(it, r) {
   const gy = displayed.y / cv.height * GH;
 
   const scaleX = cv.width / vw;
-  const displayedRadius = r * scaleX;
+  // Multiplied by 1.8 to expand the trigger range for high overhead distance/ceilings
+  const displayedRadius = (r * scaleX) * 1.8;
   const rc = displayedRadius / cv.width * GW;
 
-  let n = 0;
-
+  let hits = 0;
   const x0 = Math.max(0, Math.floor(gx - rc));
   const x1 = Math.min(GW - 1, Math.ceil(gx + rc));
   const y0 = Math.max(0, Math.floor(gy - rc));
@@ -461,16 +461,15 @@ function camHits(it, r) {
 
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      if (
-        mf[y * GW + x] > 0.3 &&
-        Math.hypot(x - gx, y - gy) <= rc
-      ) {
-        n++;
+      const dist = Math.hypot(x - gx, y - gy);
+      if (mf[y * GW + x] > 0.2 && dist <= rc) {
+        hits++;
       }
     }
   }
 
-  return n;
+  // Lowered threshold count slightly to make pickup collection much more responsive from afar
+  return hits >= 2 ? hits : 0;
 }
 
 function collect(it) {
@@ -709,7 +708,7 @@ function frame(now) {
   const r = geo.tw * 0.5;
   for (const it of items) {
     if (!it.alive) continue;
-    if (camOK && camHits(it, r) >= 3) collect(it);
+    if (camOK && camHits(it, r) > 0) collect(it);
     else if (mouse && Math.hypot(mouse.x - it.x, mouse.y - it.y) < r * 0.8) collect(it);
     else if (demoPt && Math.hypot(demoPt.x - it.x, demoPt.y - it.y) < r * 0.8) collect(it);
   }
