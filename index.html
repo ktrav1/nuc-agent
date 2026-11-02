@@ -31,67 +31,46 @@
   &nbsp;·&nbsp; [ / ] min size</div>
 
 <script>
-/*
-  KART TRACK - two-projector floor version (webcam only, no installs)
-  Neon palette: yellow / green / hot pink / purple / white (reads on a dark floor with lights on)
-
-  SAME FILE on both NUCs, only the URL differs:
-    Left  projector NUC :  kart_track.html?side=left
-    Right projector NUC :  kart_track.html?side=right
-    Single screen test  :  kart_track.html
-
-  Track shape:   (default) semi-circle arch      &track=oval  full closed oval      &round=1  narrower arch
-
-  Keys (same family as the autumn grove; settings are remembered per browser):
-    F fullscreen   M mirror camera   V flip camera   C next camera   I list cameras
-    D motion view (shows exactly what is sensed)   - / + sensitivity   A demo mover   H hide help
-    Left/Right  rotate the picture 90 deg          Up/Down  rotate the camera input 90 deg
-    , / .  shrink / fill the camera view           Shift+arrows  move the camera view     0  reset camera fit
-    1 / 2  narrower / wider dark gap between the two projected areas
-    G calibration grid    R bring pickups back
-    Focus:  P mode (all / only inside zone / one person)   Z draw zone   X clear zone   L re-lock   [ / ] min size
-
-  URL options: &mirror=1 &flip=1 &sens=1.2 &rot=0-3 &camrot=0-3 &gap=0.5 &zoom=1 &camx=0 &camy=0 &respawn=4000 &hint=0
-*/
-
 const q = new URLSearchParams(location.search);
-const SIDE = (q.get('side') || 'full').toLowerCase();       // left | right | full
+const SIDE = (q.get('side') || 'full').toLowerCase();
 const OVAL = (q.get('track') || '').toLowerCase() === 'oval';
 const ROUND = q.get('round') === '1';
 const RESPAWN_MS = parseInt(q.get('respawn') || '4000', 10);
 
-// settings: URL params win, otherwise whatever was last set with the keyboard on this browser
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('kart_' + SIDE) || '{}'); } catch (e) {}
+if (saved.v !== 2) saved = { rot: saved.rot, gap: saved.gap };
 const pick = (n, d) => q.has(n) ? q.get(n) : (saved[n] !== undefined ? saved[n] : d);
 let MIRROR = String(pick('mirror', 0)) === '1';
 let FLIP = String(pick('flip', 0)) === '1';
+let SPARKLES = String(pick('sparkles', 0)) === '1';
 let SENS = parseFloat(pick('sens', 1));
-let ROT = ((parseInt(pick('rot', 0), 10) % 4) + 4) % 4;        // picture rotation, 90 degree steps
-let CAMROT = ((parseInt(pick('camrot', 0), 10) % 4) + 4) % 4;  // camera rotation, 90 degree steps
-let GAP = parseFloat(pick('gap', 0.5));        // unprojected gap between the two screens, in screen widths
-let CAMZOOM = parseFloat(pick('zoom', 1));     // camera fit (>1 = fill more)
-let CAMX = parseFloat(pick('camx', 0));        // camera shift, fraction of frame
+let ROT = ((parseInt(pick('rot', 0), 10) % 4) + 4) % 4;
+let CAMROT = ((parseInt(pick('camrot', 0), 10) % 4) + 4) % 4;
+let GAP = parseFloat(pick('gap', 0.5));
+let CAMZOOM = parseFloat(pick('zoom', 1));
+let CAMX = parseFloat(pick('camx', 0));
 let CAMY = parseFloat(pick('camy', 0));
-let ZONE = saved.zone || null;                 // {x0,y0,x1,y1} as 0..1 of the picture; null = whole view
-let PMODE = (saved.pmode | 0) % 3;             // 0 all movement, 1 only inside zone, 2 one person (inside zone)
-let MINAREA = saved.minArea || 22;             // smallest blob (grid cells) that can become "the person"
+let ZONE = saved.zone || null;
+let PMODE = (saved.pmode | 0) % 3;
+let MINAREA = saved.minArea || 10;
+
 function saveSettings() {
   try {
     localStorage.setItem('kart_' + SIDE, JSON.stringify({
-      mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0, sens: SENS, rot: ROT, camrot: CAMROT,
-      gap: GAP, zoom: CAMZOOM, camx: CAMX, camy: CAMY, zone: ZONE, pmode: PMODE, minArea: MINAREA
+      v: 2, sparkles: SPARKLES ? 1 : 0, mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0,
+      sens: SENS, rot: ROT, camrot: CAMROT, gap: GAP, zoom: CAMZOOM, camx: CAMX, camy: CAMY,
+      zone: ZONE, pmode: PMODE, minArea: MINAREA
     }));
   } catch (e) {}
 }
 
-/* neon colours */
 const YELLOW = '#fff200', PINK = '#ff1fb4', PURPLE = '#a926ff', GREEN = '#39ff14', WHITE = '#ffffff';
-const HUES = [56, 120, 322, 280, 322, 56, 120];   // yellow, green, pink, purple (hsl hues). -1 = white
+const HUES = [56, 120, 322, 280, 322, 56, 120];
 
 const cv = document.getElementById('c');
-const dctx = cv.getContext('2d');             // what the projector shows
-const sc = document.createElement('canvas');   // the scene is drawn here, then rotated onto cv
+const dctx = cv.getContext('2d');
+const sc = document.createElement('canvas');
 const ctx = sc.getContext('2d');
 const vid = document.getElementById('v');
 const toastEl = document.getElementById('toast'), hintEl = document.getElementById('hint');
@@ -114,7 +93,6 @@ function hsl(h, l, a) {
   return `hsla(${h},100%,${l}%,${a === undefined ? 1 : a})`;
 }
 
-/* ---------------- toast + hint ---------------- */
 let toastTimer = 0, hintTimer = 0;
 function toast(msg, ms = 2400) {
   toastEl.textContent = msg;
@@ -122,23 +100,17 @@ function toast(msg, ms = 2400) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
 }
-function showHint(sec) {
-  hintEl.classList.add('show');
-  clearTimeout(hintTimer);
-  if (sec) hintTimer = setTimeout(() => hintEl.classList.remove('show'), sec * 1000);
-}
 
-/* ---------------- layout ---------------- */
 function resize() {
   cv.width = window.innerWidth;
   cv.height = window.innerHeight;
-  // with a 90/270 picture rotation the scene is laid out on the swapped screen size
-  vw = sc.width = (ROT % 2) ? cv.height : cv.width;
-  vh = sc.height = (ROT % 2) ? cv.width : cv.height;
-  const gapPx = GAP * vw;                      // dark floor between the two projected areas
-  W = SIDE === 'full' ? vw : vw * 2 + gapPx;   // whole world width (screen + gap + screen)
+  vw = sc.width = cv.width;
+  vh = sc.height = cv.height;
+
+  const gapPx = GAP * vw;
+  W = SIDE === 'full' ? vw : vw * 2 + gapPx;
   H = vh;
-  offset = SIDE === 'right' ? vw + gapPx : 0;  // where this screen starts in the world
+  offset = SIDE === 'right' ? vw + gapPx : 0;
   if (OVAL) {
     geo = { cx: W / 2, cyc: H * 0.5, ry: H * 0.39, rx: W * 0.43, tw: H * 0.15 };
   } else {
@@ -149,7 +121,6 @@ function resize() {
   buildItems();
 }
 
-// point on the track centreline (plus radial offset o) at angle a
 function trackPt(a, o) {
   return {
     x: geo.cx + (geo.rx + o) * Math.cos(a),
@@ -157,7 +128,6 @@ function trackPt(a, o) {
   };
 }
 
-/* ---------------- static track layer ---------------- */
 function buildTrack() {
   trackLayer = document.createElement('canvas');
   trackLayer.width = vw; trackLayer.height = vh;
@@ -171,7 +141,6 @@ function buildTrack() {
   };
   t.lineCap = 'butt';
 
-  // neon outer glow
   t.save();
   t.shadowColor = 'rgba(170,70,255,0.95)';
   t.shadowBlur = H * 0.05;
@@ -180,7 +149,6 @@ function buildTrack() {
   path(t, 0); t.stroke();
   t.restore();
 
-  // curbs: neon yellow base, with neon pink and neon green blocks alternating on top
   t.lineWidth = tw + cb * 2;
   t.strokeStyle = YELLOW;
   path(t, 0); t.stroke();
@@ -193,18 +161,15 @@ function buildTrack() {
   t.setLineDash([]);
   t.lineDashOffset = 0;
 
-  // road: vivid purple
   t.lineWidth = tw;
   t.strokeStyle = PURPLE;
   path(t, 0); t.stroke();
 
-  // bright white edge lines
   t.strokeStyle = WHITE;
   t.lineWidth = tw * 0.035;
   path(t, tw * 0.44); t.stroke();
   path(t, -tw * 0.44); t.stroke();
 
-  // white centre dashes
   t.lineWidth = tw * 0.05;
   t.strokeStyle = WHITE;
   t.setLineDash([tw * 0.34, tw * 0.26]);
@@ -212,7 +177,6 @@ function buildTrack() {
   t.setLineDash([]);
 
   if (OVAL) {
-    // one checkered start/finish line across the bottom-left of the loop
     const a = Math.PI / 2 + 0.9;
     const p = trackPt(a, 0);
     const nx = Math.cos(a) / rx, ny = Math.sin(a) / ry;
@@ -230,7 +194,6 @@ function buildTrack() {
     }
     t.restore();
   } else {
-    // START line (left leg): white band with neon green blocks
     const sx = cx - rx - tw / 2, sh = tw * 0.22;
     t.save();
     t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.02;
@@ -243,7 +206,6 @@ function buildTrack() {
       t.fillRect(sx + i * bw, cyc - sh, bw, sh * 0.5);
     }
 
-    // FINISH line (right leg): checkered
     const fx = cx + rx - tw / 2, cs = tw / 8;
     t.save();
     t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.015;
@@ -256,7 +218,6 @@ function buildTrack() {
     t.restore();
   }
 
-  // ambient twinkle points (same on both NUCs)
   const rnd = mulberry32(21);
   ambient = [];
   for (let i = 0; i < 100; i++) {
@@ -269,7 +230,6 @@ function buildTrack() {
   }
 }
 
-/* ---------------- pickups ---------------- */
 function buildItems() {
   items = [];
   const rnd = mulberry32(7);
@@ -282,10 +242,9 @@ function buildItems() {
     const p = trackPt(a, o);
     const lx = p.x - offset;
     if (SIDE !== 'full') {
-      // other screen, the gap, or too close to a screen edge / seam
       if (lx < vw * 0.05 || lx > vw * 0.95) continue;
     }
-    const kind = i % 2;                                  // 0 mushroom, 1 gift
+    const kind = i % 2;
     items.push({ x: lx, y: p.y, kind, hue: HUES[(i >> 1) % HUES.length], phase, alive: true, grow: 1 });
   }
 }
@@ -295,7 +254,6 @@ function reviveAll() {
   items.forEach((it, i) => { it.alive = true; it.grow = -i * 0.12; });
 }
 
-/* ---------------- particles ---------------- */
 const parts = [], rings = [];
 const PAL = [56, 120, 322, 280, -1, 322, 120, 56];
 
@@ -303,7 +261,6 @@ function emit(x, y, n, burst) {
   for (let i = 0; i < n; i++) {
     if (parts.length > 1400) return;
     const ang = Math.random() * 6.283;
-    // sparkles stay put where the movement was (tiny drift, short life) so they track you closely
     const sp = burst ? 40 + Math.random() * 160 : 2 + Math.random() * 8;
     parts.push({
       x: x + (Math.random() - 0.5) * (burst ? 4 : 16),
@@ -316,24 +273,21 @@ function emit(x, y, n, burst) {
   }
 }
 
-/* ---------------- camera motion (same method as the autumn grove) ---------------- */
-const GW = 96, GH = 54;        // finer motion grid (overhead view needs to be precise)
+const GW = 64, GH = 36;
 const sm = document.createElement('canvas'); sm.width = GW; sm.height = GH;
 const sctx = sm.getContext('2d', { willReadFrequently: true });
-const bg = new Float32Array(GW * GH);      // previous (smoothed) frame
-const moving = new Uint8Array(GW * GH);
+const mf = new Float32Array(GW * GH);
 const raw = new Float32Array(GW * GH);
-const lumv = new Float32Array(GW * GH);
-const lumb = new Float32Array(GW * GH);   // blurred brightness
-const raw2 = new Float32Array(GW * GH);
-const mfield = new Float32Array(GW * GH); // motion that lingers ~0.3 s so arms and legs stay lit
+const prev = new Float32Array(GW * GH);
+const cur = new Float32Array(GW * GH);
 let lastVT = -1;
+
 const cand = new Float32Array(GW * GH);
 const lab = new Int16Array(GW * GH);
 const stk = new Int16Array(GW * GH);
-let haveBg = false, camOK = false, stream = null, devices = [], devIdx = 0;
+let camOK = false, stream = null, devices = [], devIdx = 0, havePrev = false;
 let lock = null, zoneEdit = false, dragA = null;
-const LOCK_R = 16, LOCK_HOLD = 5000;       // grid cells around the person that still count; ms before the lock is dropped
+const LOCK_R = 11, LOCK_HOLD = 5000;
 const MODE_NAMES = ['All movement', 'Only inside the zone', 'One person (largest mover in the zone)'];
 
 function stopCamera() {
@@ -342,7 +296,7 @@ function stopCamera() {
 }
 async function startCam(id) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('Camera API not available. Use Chrome or Edge (https or localhost).');
+    throw new Error('Camera API not available. Use Chrome or Edge.');
   }
   stopCamera();
   const v = { width: { ideal: 640 }, height: { ideal: 480 } };
@@ -350,14 +304,14 @@ async function startCam(id) {
   stream = await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
   vid.srcObject = stream;
   await vid.play();
-  camOK = true; haveBg = false; lastVT = -1;
+  camOK = true; havePrev = false; lastVT = -1;
   const list = await navigator.mediaDevices.enumerateDevices();
   devices = list.filter(d => d.kind === 'videoinput');
   const tr = stream.getVideoTracks()[0];
   const sid = tr.getSettings().deviceId;
   devIdx = Math.max(0, devices.findIndex(d => d.deviceId === sid));
   const isDepth = l => /depth|infrared|\bir\b|stereo/i.test(l || '') && !/rgb|colou?r/i.test(l || '');
-  if (!id && isDepth(tr.label)) {              // RealSense: prefer its RGB camera over depth / infrared
+  if (!id && isDepth(tr.label)) {
     const rgb = devices.find(d => !isDepth(d.label) && d.deviceId !== sid);
     if (rgb) { devIdx = devices.indexOf(rgb); return startCam(rgb.deviceId); }
   }
@@ -379,7 +333,6 @@ async function nextCamera() {
   startCam(devices[devIdx].deviceId).catch(e => toast(e.message || 'Could not open that camera', 4000));
 }
 
-/* focus filters: zone + "one person" lock */
 function filterCandidates(now) {
   if (PMODE >= 1 && ZONE) {
     const x0 = ZONE.x0 * GW, x1 = ZONE.x1 * GW, y0 = ZONE.y0 * GH, y1 = ZONE.y1 * GH;
@@ -389,7 +342,6 @@ function filterCandidates(now) {
   }
   if (PMODE < 2) return;
 
-  // group moving cells into blobs
   lab.fill(0);
   const comps = [];
   for (let i = 0; i < cand.length; i++) {
@@ -408,7 +360,7 @@ function filterCandidates(now) {
     comps.push({ id, area, x: sx / area, y: sy / area });
   }
 
-  if (!lock) {                                  // nobody followed yet: the largest big-enough mover becomes "the person"
+  if (!lock) {
     let best = null;
     for (const c of comps) if (c.area >= MINAREA && (!best || c.area > best.area)) best = c;
     if (best) lock = { x: best.x, y: best.y, t: now };
@@ -417,7 +369,7 @@ function filterCandidates(now) {
   if (lock) {
     let sx = 0, sy = 0, sa = 0;
     for (const c of comps) {
-      if (Math.hypot(c.x - lock.x, (c.y - lock.y) * 1.6) <= LOCK_R) {   // arms / legs near the person count too
+      if (Math.hypot(c.x - lock.x, (c.y - lock.y) * 1.6) <= LOCK_R) {
         keep[c.id] = 1; sx += c.x * c.area; sy += c.y * c.area; sa += c.area;
       }
     }
@@ -428,128 +380,96 @@ function filterCandidates(now) {
 }
 
 function analyze(dt) {
-  const n = GW * GH;
-  // motion lingers briefly, so it doesn't flicker between camera frames
-  const dec = Math.pow(0.1, dt);
-  for (let i = 0; i < n; i++) mfield[i] *= dec;
-  // only look at a camera frame once (the page redraws faster than the camera delivers)
+  const dec = Math.pow(0.07, dt);
+  for (let i = 0; i < mf.length; i++) mf[i] *= dec;
   if (camOK && vid.readyState >= 2 && vid.currentTime !== lastVT) {
     lastVT = vid.currentTime;
-    newCameraFrame();
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.translate(GW / 2 + CAMX * GW, GH / 2 + CAMY * GH);
+    sctx.rotate(CAMROT * Math.PI / 2);
+    sctx.scale((MIRROR ? -1 : 1) * CAMZOOM, (FLIP ? -1 : 1) * CAMZOOM);
+    sctx.drawImage(vid, -GW / 2, -GH / 2, GW, GH);
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    const d = sctx.getImageData(0, 0, GW, GH).data;
+
+    const thr = 24 / SENS, range = 35 / SENS;
+    let over = 0;
+    for (let y = 0; y < GH; y++) {
+      for (let x = 0; x < GW; x++) {
+        const i = y * GW + x, p = i * 4;
+        const g = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
+        cur[i] = g;
+        const diff = havePrev ? Math.abs(g - prev[i]) : 0;
+        const v = diff > thr ? Math.min(1, (diff - thr) / range) : 0;
+        if (diff > thr) over++;
+        raw[y * GW + x] = v;
+      }
+    }
+    for (let i = 0; i < prev.length; i++) prev[i] = prev[i] * 0.4 + cur[i] * 0.6;
+    if (!havePrev) { havePrev = true; return; }
+    if (over > GW * GH * 0.55) return;
+
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const i = y * GW + x;
+        const nb = Math.max(raw[i - 1], raw[i + 1], raw[i - GW], raw[i + GW]) * 0.85;
+        const v = Math.max(raw[i], nb);
+        cand[i] = v > 0.35 ? v : 0;
+      }
+    }
+    filterCandidates(performance.now());
+    for (let i = 0; i < cand.length; i++) if (cand[i] > mf[i]) mf[i] = cand[i];
   }
-  for (let i = 0; i < n; i++) moving[i] = mfield[i] > 0.3 ? 1 : 0;
 }
 
-function newCameraFrame() {
-  sctx.imageSmoothingEnabled = true;
-  sctx.imageSmoothingQuality = 'high';
-  sctx.setTransform(1, 0, 0, 1, 0, 0);
-  // camera -> screen mapping: shift (camx/camy), zoom, rotate, mirror/flip
-  sctx.translate(GW / 2 + CAMX * GW, GH / 2 + CAMY * GH);
-  sctx.rotate(CAMROT * Math.PI / 2);
-  sctx.scale((MIRROR ? -1 : 1) * CAMZOOM, (FLIP ? -1 : 1) * CAMZOOM);
-  sctx.drawImage(vid, -GW / 2, -GH / 2, GW, GH);
-  sctx.setTransform(1, 0, 0, 1, 0, 0);
-  const d = sctx.getImageData(0, 0, GW, GH).data;
-  const n = GW * GH;
+/* Converts an object's scene position to the physical displayed position. */
+function sceneToDisplay(sceneX, sceneY) {
+  let x = sceneX - vw / 2;
+  let y = sceneY - vh / 2;
 
-  for (let i = 0; i < n; i++) lumv[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
-  // 3x3 blur: removes sensor noise, so the threshold can stay low enough to catch arms
-  for (let y = 0; y < GH; y++) {
-    for (let x = 0; x < GW; x++) {
-      let sum = 0, c = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
-          sum += lumv[yy * GW + xx]; c++;
-        }
-      }
-      lumb[y * GW + x] = sum / c;
-    }
+  if (ROT % 2 !== 0) {
+    x *= cv.height / cv.width;
+    y *= cv.width / cv.height;
   }
 
-  // frame-to-frame change: you only light up while you move
-  const thr = 14 / SENS, range = 30 / SENS;
-  let over = 0;
-  for (let i = 0; i < n; i++) {
-    const diff = haveBg ? Math.abs(lumb[i] - bg[i]) : 0;
-    raw[i] = diff > thr ? Math.min(1, 0.4 + (diff - thr) / range) : 0;
-    if (diff > thr) over++;
-  }
-  for (let i = 0; i < n; i++) bg[i] = bg[i] * 0.4 + lumb[i] * 0.6;
-  if (!haveBg) { haveBg = true; return; }
-  if (over > n * 0.55) return;                   // auto-exposure flash: ignore this frame
+  const rad = ROT * Math.PI / 2;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
 
-  // drop lone flickering cells (real movement comes in clumps)
-  for (let y = 0; y < GH; y++) {
-    for (let x = 0; x < GW; x++) {
-      const i = y * GW + x;
-      raw2[i] = 0;
-      if (raw[i] <= 0) continue;
-      let nb = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dy) continue;
-          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
-          if (raw[yy * GW + xx] > 0) nb++;
-        }
-      }
-      if (nb >= 1) raw2[i] = raw[i];
-    }
-  }
-
-  // grow movement outward (radius 2) so a moving body / arm reads as one solid shape, not just its edges
-  const R = 2;
-  cand.fill(0);
-  let count = 0;
-  for (let y = 0; y < GH; y++) {
-    for (let x = 0; x < GW; x++) {
-      let best = 0;
-      for (let dy = -R; dy <= R; dy++) {
-        const yy = y + dy; if (yy < 0 || yy >= GH) continue;
-        for (let dx = -R; dx <= R; dx++) {
-          const xx = x + dx; if (xx < 0 || xx >= GW) continue;
-          const v = raw2[yy * GW + xx];
-          if (v <= 0) continue;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist > R + 0.5) continue;
-          const vv = v * (1 - dist * 0.1);
-          if (vv > best) best = vv;
-        }
-      }
-      if (best > 0.32) { cand[y * GW + x] = best; count++; }
-    }
-  }
-  if (count / n > 0.5) return;                   // camera bump / lighting change: ignore
-  filterCandidates(performance.now());
-
-  const cells = [];
-  for (let i = 0; i < n; i++) {
-    if (cand[i] > 0) {
-      if (cand[i] > mfield[i]) mfield[i] = cand[i];
-      cells.push(i);
-    }
-  }
-  if (cells.length) {
-    const p = Math.min(1, 26 / cells.length);
-    for (const i of cells) {
-      if (Math.random() < p) {
-        emit(((i % GW) + 0.5) / GW * vw, (Math.floor(i / GW) + 0.5) / GH * vh, 1, false);
-      }
-    }
-  }
+  return {
+    x: cv.width / 2 + x * cos - y * sin,
+    y: cv.height / 2 + x * sin + y * cos
+  };
 }
 
 function camHits(it, r) {
-  const gx = it.x / vw * GW, gy = it.y / vh * GH, rc = r / vw * GW;
+  const displayed = sceneToDisplay(it.x, it.y);
+
+  const gx = displayed.x / cv.width * GW;
+  const gy = displayed.y / cv.height * GH;
+
+  const scaleX = cv.width / vw;
+  const displayedRadius = r * scaleX;
+  const rc = displayedRadius / cv.width * GW;
+
   let n = 0;
-  const x0 = Math.max(0, Math.floor(gx - rc)), x1 = Math.min(GW - 1, Math.ceil(gx + rc));
-  const y0 = Math.max(0, Math.floor(gy - rc)), y1 = Math.min(GH - 1, Math.ceil(gy + rc));
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++)
-      if (moving[y * GW + x] && Math.hypot(x - gx, y - gy) <= rc) n++;
+
+  const x0 = Math.max(0, Math.floor(gx - rc));
+  const x1 = Math.min(GW - 1, Math.ceil(gx + rc));
+  const y0 = Math.max(0, Math.floor(gy - rc));
+  const y1 = Math.min(GH - 1, Math.ceil(gy + rc));
+
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (
+        mf[y * GW + x] > 0.3 &&
+        Math.hypot(x - gx, y - gy) <= rc
+      ) {
+        n++;
+      }
+    }
+  }
+
   return n;
 }
 
@@ -560,17 +480,34 @@ function collect(it) {
   if (!items.some(i => i.alive)) clearedAt = performance.now();
 }
 
-/* screen position -> scene position (undo the picture rotation) */
-function toScene(cx, cy) {
-  const dx = cx - cv.width / 2, dy = cy - cv.height / 2;
-  const ca = Math.cos(-ROT * Math.PI / 2), sa = Math.sin(-ROT * Math.PI / 2);
-  return { x: dx * ca - dy * sa + vw / 2, y: dx * sa + dy * ca + vh / 2 };
+function toScene(clientX, clientY) {
+  const x = clientX - cv.width / 2;
+  const y = clientY - cv.height / 2;
+
+  const rad = -ROT * Math.PI / 2;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const rx = x * cos - y * sin;
+  const ry = x * sin + y * cos;
+
+  if (ROT % 2 !== 0) {
+    return {
+      x: rx * (cv.width / cv.height) + vw / 2,
+      y: ry * (cv.height / cv.width) + vh / 2
+    };
+  }
+
+  return {
+    x: rx + vw / 2,
+    y: ry + vh / 2
+  };
 }
+
 function normRect(a, bx, by) {
   return { x0: Math.min(a.x, bx), y0: Math.min(a.y, by), x1: Math.max(a.x, bx), y1: Math.max(a.y, by) };
 }
 
-/* mouse: sparkles for testing without a camera; also draws the zone */
 let mouse = null;
 window.addEventListener('pointermove', e => {
   const p = toScene(e.clientX, e.clientY);
@@ -579,7 +516,10 @@ window.addEventListener('pointermove', e => {
     return;
   }
   mouse = p;
-  emit(p.x, p.y, 3, false);
+  const displayed = sceneToDisplay(p.x, p.y);
+  const cx = (displayed.x / cv.width * GW) | 0;
+  const cy = (displayed.y / cv.height * GH) | 0;
+  if (cx >= 0 && cy >= 0 && cx < GW && cy < GH) mf[cy * GW + cx] = 1;
 });
 window.addEventListener('pointerdown', e => {
   if (!zoneEdit) return;
@@ -597,7 +537,6 @@ window.addEventListener('pointerup', () => {
   }
 });
 
-/* ---------------- drawing helpers ---------------- */
 function glow(x, y, r, h, a) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, hsl(h, 60, a));
@@ -627,11 +566,10 @@ function drawItem(it, tm) {
   glow(0, 0, s * (2.1 + Math.sin(tm * 2.4 + it.phase) * 0.25), it.hue, 0.6);
   ctx.globalCompositeOperation = 'source-over';
 
-  // white outline so they pop even on the purple road
   ctx.lineWidth = s * 0.09;
   ctx.strokeStyle = '#ffffff';
 
-  if (it.kind === 0) {            // glowing mushroom
+  if (it.kind === 0) {
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.roundRect(-s * 0.22, -s * 0.05, s * 0.44, s * 0.6, s * 0.15); ctx.fill();
     ctx.fillStyle = hsl(it.hue, 55, 1);
@@ -641,7 +579,7 @@ function drawItem(it, tm) {
     [[-0.34, -0.3, 0.13], [0.08, -0.5, 0.15], [0.4, -0.22, 0.1]].forEach(p => {
       ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, p[2] * s, 0, 6.283); ctx.fill();
     });
-  } else {                        // gift box
+  } else {
     ctx.rotate(Math.sin(tm * 1.5 + it.phase) * 0.08);
     ctx.fillStyle = hsl(it.hue, 55, 1);
     ctx.beginPath(); ctx.roundRect(-s * 0.5, -s * 0.42, s, s * 0.9, s * 0.12); ctx.fill();
@@ -675,36 +613,83 @@ function drawCalibration() {
   ctx.restore();
 }
 
-// D: shows exactly which cells are sensed, on top of the real picture, so you can check alignment
 function drawFocusOverlay() {
   let z = ZONE;
-  if (zoneEdit && dragA) z = dragA.rect;
-  if (z && (zoneEdit || debug)) {
-    const x0 = z.x0 * vw, y0 = z.y0 * vh, x1 = z.x1 * vw, y1 = z.y1 * vh;
-    if (zoneEdit) {                              // dim everything outside the active area
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, vw, y0); ctx.fillRect(0, y1, vw, vh - y1);
-      ctx.fillRect(0, y0, x0, y1 - y0); ctx.fillRect(x1, y0, vw - x1, y1 - y0);
-    }
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
-    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([]);
+  if (zoneEdit && dragA) {
+    z = dragA.rect;
   }
+
+  if (z && (zoneEdit || debug)) {
+    const corners = [
+      sceneToDisplay(z.x0 * vw, z.y0 * vh),
+      sceneToDisplay(z.x1 * vw, z.y0 * vh),
+      sceneToDisplay(z.x1 * vw, z.y1 * vh),
+      sceneToDisplay(z.x0 * vw, z.y1 * vh)
+    ];
+
+    dctx.save();
+
+    dctx.beginPath();
+    dctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < corners.length; i++) {
+      dctx.lineTo(corners[i].x, corners[i].y);
+    }
+    dctx.closePath();
+
+    if (zoneEdit) {
+      dctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+      dctx.fill();
+    }
+
+    dctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    dctx.lineWidth = 2;
+    dctx.setLineDash([10, 8]);
+    dctx.stroke();
+    dctx.setLineDash([]);
+
+    dctx.restore();
+  }
+
   if (debug) {
-    const cw = vw / GW, chh = vh / GH;
-    for (let i = 0; i < mfield.length; i++) {
-      const v = mfield[i];
-      if (v < 0.05) continue;
-      ctx.fillStyle = `rgba(0,255,255,${Math.min(0.55, v * 0.6)})`;
-      ctx.fillRect((i % GW) * cw, ((i / GW) | 0) * chh, cw + 0.5, chh + 0.5);
+    const cellWidth = cv.width / GW;
+    const cellHeight = cv.height / GH;
+
+    dctx.save();
+
+    for (let i = 0; i < mf.length; i++) {
+      const value = mf[i];
+      if (value < 0.05) continue;
+
+      dctx.fillStyle =
+        `rgba(0,255,255,${Math.min(0.55, value * 0.6)})`;
+
+      dctx.fillRect(
+        (i % GW) * cellWidth,
+        Math.floor(i / GW) * cellHeight,
+        cellWidth + 0.5,
+        cellHeight + 0.5
+      );
     }
-    if (lock) {                                  // ring where the followed person is
-      ctx.strokeStyle = 'rgba(120,255,160,0.95)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc((lock.x + 0.5) / GW * vw, (lock.y + 0.5) / GH * vh, LOCK_R / GW * vw * 0.5, 0, 6.283); ctx.stroke();
+
+    if (lock) {
+      dctx.strokeStyle = 'rgba(120,255,160,0.95)';
+      dctx.lineWidth = 3;
+
+      dctx.beginPath();
+      dctx.arc(
+        (lock.x + 0.5) / GW * cv.width,
+        (lock.y + 0.5) / GH * cv.height,
+        LOCK_R / GW * cv.width * 0.5,
+        0,
+        Math.PI * 2
+      );
+      dctx.stroke();
     }
+
+    dctx.restore();
   }
 }
 
-/* ---------------- main loop ---------------- */
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -712,11 +697,13 @@ function frame(now) {
 
   analyze(dt);
 
-  // demo mover (A): a fake person walking a loop, for testing without anyone on the floor
   let demoPt = null;
   if (demo) {
     demoPt = { x: vw * (0.5 + 0.38 * Math.sin(tm * 0.35)), y: vh * (0.6 + 0.3 * Math.sin(tm * 0.53 + 1)) };
-    emit(demoPt.x, demoPt.y, 3, false);
+    const displayed = sceneToDisplay(demoPt.x, demoPt.y);
+    const cx = (displayed.x / cv.width * GW) | 0;
+    const cy = (displayed.y / cv.height * GH) | 0;
+    if (cx >= 0 && cy >= 0 && cx < GW && cy < GH) mf[cy * GW + cx] = 1;
   }
 
   const r = geo.tw * 0.5;
@@ -726,7 +713,6 @@ function frame(now) {
     else if (mouse && Math.hypot(mouse.x - it.x, mouse.y - it.y) < r * 0.8) collect(it);
     else if (demoPt && Math.hypot(demoPt.x - it.x, demoPt.y - it.y) < r * 0.8) collect(it);
   }
-  // grow back after the last pickup on this half is gone (local, no sync needed)
   if (items.length && !items.some(i => i.alive) && now - clearedAt > RESPAWN_MS) reviveAll();
   for (const it of items) if (it.alive && it.grow < 1) it.grow += dt * 1.3;
 
@@ -763,80 +749,113 @@ function frame(now) {
   }
   ctx.globalCompositeOperation = 'source-over';
 
-  drawFocusOverlay();
-  if (showCal) drawCalibration();
-
-  // present: rotate the finished scene onto the visible canvas
+  // Final render to projector display canvas with picture rotation applied safely
   dctx.setTransform(1, 0, 0, 1, 0, 0);
   dctx.fillStyle = '#000';
   dctx.fillRect(0, 0, cv.width, cv.height);
+  
+  dctx.save();
   dctx.translate(cv.width / 2, cv.height / 2);
   dctx.rotate(ROT * Math.PI / 2);
+  if (ROT % 2 !== 0) {
+    dctx.scale(cv.height / cv.width, cv.width / cv.height);
+  }
   dctx.drawImage(sc, -vw / 2, -vh / 2);
+  dctx.restore();
+
+  // Camera debug overlay is drawn last so it stays fixed to the physical screen.
+  drawFocusOverlay();
+
+  if (showCal) {
+    drawCalibration();
+  }
+
   requestAnimationFrame(frame);
 }
 
-/* ---------------- keyboard ---------------- */
 function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(() => {});
 }
+
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k.startsWith('arrow')) e.preventDefault();
-  let persist = true;
-
-  if (k === 'f') { toggleFullscreen(); persist = false; }
-  else if (k === 'm') { MIRROR = !MIRROR; haveBg = false; toast('Mirror ' + (MIRROR ? 'on' : 'off')); }
-  else if (k === 'v') { FLIP = !FLIP; haveBg = false; toast('Flip ' + (FLIP ? 'on' : 'off')); }
-  else if (k === 'c') { nextCamera(); persist = false; }
-  else if (k === 'i') { listCameras(); persist = false; }
-  else if (k === 'd') { debug = !debug; toast('Motion view ' + (debug ? 'on: cyan = what is sensed' : 'off')); persist = false; }
-  else if (k === 'a') { demo = !demo; toast('Demo mover ' + (demo ? 'on' : 'off')); persist = false; }
-  else if (k === 'h') { hintEl.classList.toggle('show'); persist = false; }
-  else if (k === 'g') { showCal = !showCal; persist = false; }
-  else if (k === 'r') { reviveAll(); persist = false; }
-  else if (k === '-' || k === '_') { SENS = Math.max(0.4, SENS / 1.2); toast('Sensitivity ' + SENS.toFixed(2)); }
-  else if (k === '=' || k === '+') { SENS = Math.min(4, SENS * 1.2); toast('Sensitivity ' + SENS.toFixed(2)); }
-  else if (k === 'arrowleft' || k === 'arrowright' || k === 'arrowup' || k === 'arrowdown') {
-    if (e.shiftKey) {                                               // Shift+arrows: move the camera view
-      if (k === 'arrowleft') CAMX -= 0.02;
-      else if (k === 'arrowright') CAMX += 0.02;
-      else if (k === 'arrowup') CAMY -= 0.02;
-      else CAMY += 0.02;
-      haveBg = false;
-    } else if (k === 'arrowleft') { ROT = (ROT + 3) % 4; resize(); toast('Picture rotated ' + ROT * 90 + '°'); }
-    else if (k === 'arrowright') { ROT = (ROT + 1) % 4; resize(); toast('Picture rotated ' + ROT * 90 + '°'); }
-    else if (k === 'arrowup') { CAMROT = (CAMROT + 1) % 4; haveBg = false; toast('Camera rotated ' + CAMROT * 90 + '°'); }
-    else { CAMROT = (CAMROT + 3) % 4; haveBg = false; toast('Camera rotated ' + CAMROT * 90 + '°'); }
+  if (k === 'f') {
+    toggleFullscreen();
   }
-  else if (k === ',') { CAMZOOM = Math.max(0.4, CAMZOOM - 0.05); haveBg = false; toast('Camera view ' + CAMZOOM.toFixed(2) + ' (shrink)'); }
-  else if (k === '.') { CAMZOOM = Math.min(4, CAMZOOM + 0.05); haveBg = false; toast('Camera view ' + CAMZOOM.toFixed(2) + ' (fill)'); }
-  else if (k === '0') { CAMZOOM = 1; CAMX = 0; CAMY = 0; haveBg = false; toast('Camera fit reset'); }
-  else if (k === '1') { GAP = Math.max(0, GAP - 0.05); resize(); toast('Gap ' + GAP.toFixed(2)); }
-  else if (k === '2') { GAP = Math.min(3, GAP + 0.05); resize(); toast('Gap ' + GAP.toFixed(2)); }
-  else if (k === 'p') {
-    PMODE = (PMODE + 1) % 3; lock = null;
-    toast('Mode: ' + MODE_NAMES[PMODE] + ((PMODE > 0 && !ZONE) ? '  (no zone drawn yet: press Z)' : ''), 3500);
+  else if (e.shiftKey && e.key === 'ArrowLeft') {
+    CAMX -= 0.02;
+    havePrev = false;
+    saveSettings();
+    toast('Camera X: ' + CAMX.toFixed(2));
   }
-  else if (k === 'z') {
-    zoneEdit = !zoneEdit; dragA = null;
-    document.body.style.cursor = zoneEdit ? 'crosshair' : 'none';
-    toast(zoneEdit ? 'Drag on the screen to draw the active area. Press Z again when done.' : 'Zone editing off', 3500);
-    persist = false;
+  else if (e.shiftKey && e.key === 'ArrowRight') {
+    CAMX += 0.02;
+    havePrev = false;
+    saveSettings();
+    toast('Camera X: ' + CAMX.toFixed(2));
   }
-  else if (k === 'x') { ZONE = null; lock = null; toast('Zone cleared: whole view is active'); }
-  else if (k === 'l') { lock = null; toast('Released: the next person to move will be followed'); persist = false; }
-  else if (k === '[') { MINAREA = Math.max(3, MINAREA - 3); toast('Minimum size to follow: ' + MINAREA); }
-  else if (k === ']') { MINAREA = Math.min(120, MINAREA + 3); toast('Minimum size to follow: ' + MINAREA); }
-  else return;
-  if (persist) saveSettings();
+  else if (e.shiftKey && e.key === 'ArrowUp') {
+    CAMY -= 0.02;
+    havePrev = false;
+    saveSettings();
+    toast('Camera Y: ' + CAMY.toFixed(2));
+  }
+  else if (e.shiftKey && e.key === 'ArrowDown') {
+    CAMY += 0.02;
+    havePrev = false;
+    saveSettings();
+    toast('Camera Y: ' + CAMY.toFixed(2));
+  }
+  else if (e.key === 'ArrowLeft') {
+    ROT = (ROT + 3) % 4;
+    saveSettings();
+    toast('Picture rotation: ' + ROT * 90 + '°');
+  }
+  else if (e.key === 'ArrowRight') {
+    ROT = (ROT + 1) % 4;
+    saveSettings();
+    toast('Picture rotation: ' + ROT * 90 + '°');
+  }
+  else if (e.key === 'ArrowUp') {
+    CAMROT = (CAMROT + 1) % 4;
+    havePrev = false;
+    saveSettings();
+    toast('Camera rotation: ' + CAMROT * 90 + '°');
+  }
+  else if (e.key === 'ArrowDown') {
+    CAMROT = (CAMROT + 3) % 4;
+    havePrev = false;
+    saveSettings();
+    toast('Camera rotation: ' + CAMROT * 90 + '°');
+  }
+  else if (k === 'm') { MIRROR = !MIRROR; havePrev = false; saveSettings(); toast('Mirror camera: ' + (MIRROR ? 'on' : 'off')); }
+  else if (k === 'v') { FLIP = !FLIP; havePrev = false; saveSettings(); toast('Flip camera: ' + (FLIP ? 'on' : 'off')); }
+  else if (k === 'c') nextCamera();
+  else if (k === 'i') listCameras();
+  else if (k === 'd') { debug = !debug; toast('Motion view: ' + (debug ? 'on' : 'off')); }
+  else if (k === 'a') { demo = !demo; toast('Demo mover: ' + (demo ? 'on' : 'off')); }
+  else if (k === 'h') hintEl.classList.toggle('show');
+  else if (k === 'g') { showCal = !showCal; toast('Grid: ' + (showCal ? 'on' : 'off')); }
+  else if (k === 'r') { reviveAll(); toast('Pickups reset'); }
+  else if (k === 'p') { PMODE = (PMODE + 1) % 3; lock = null; saveSettings(); toast('Focus mode: ' + MODE_NAMES[PMODE]); }
+  else if (k === 'z') { zoneEdit = !zoneEdit; dragA = null; toast(zoneEdit ? 'Drag on floor to set zone. Press Z again when done.' : 'Zone edit off'); }
+  else if (k === 'x') { ZONE = null; lock = null; saveSettings(); toast('Zone cleared'); }
+  else if (k === 'l') { lock = null; toast('Lock released'); }
+  else if (k === '[') { MINAREA = Math.max(2, MINAREA - 2); saveSettings(); toast('Min size: ' + MINAREA); }
+  else if (k === ']') { MINAREA = Math.min(80, MINAREA + 2); saveSettings(); toast('Min size: ' + MINAREA); }
+  else if (k === '-') { SENS = Math.max(0.4, SENS / 1.15); saveSettings(); toast('Sensitivity: ' + SENS.toFixed(2)); }
+  else if (k === '+') { SENS = Math.min(4, SENS * 1.15); saveSettings(); toast('Sensitivity: ' + SENS.toFixed(2)); }
+  else if (k === '0') { CAMZOOM = 1; CAMX = 0; CAMY = 0; havePrev = false; saveSettings(); toast('Camera reset'); }
+  else if (k === '1') { GAP = Math.max(0, GAP - 0.05); saveSettings(); resize(); toast('Gap: ' + GAP.toFixed(2)); }
+  else if (k === '2') { GAP = Math.min(2, GAP + 0.05); saveSettings(); resize(); toast('Gap: ' + GAP.toFixed(2)); }
+  else if (k === ',') { CAMZOOM = Math.max(0.5, CAMZOOM - 0.05); havePrev = false; saveSettings(); toast('Camera zoom: ' + CAMZOOM.toFixed(2)); }
+  else if (k === '.') { CAMZOOM = Math.min(2.5, CAMZOOM + 0.05); havePrev = false; saveSettings(); toast('Camera zoom: ' + CAMZOOM.toFixed(2)); }
 });
-window.addEventListener('resize', resize);
 
+window.addEventListener('resize', resize);
 resize();
-startCam().catch(e => toast((e && e.message) || 'Could not open the camera. Mouse still works for testing.', 5000));
-if (q.get('hint') !== '0') showHint(10);
+startCam().catch(() => {});
 requestAnimationFrame(frame);
 </script>
 </body>
