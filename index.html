@@ -1,861 +1,1211 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 <meta charset="utf-8">
-<title>Kart Track Floor</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Butterfly Garden + Floor Studio</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none;
-    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif; color: #fff; }
-  canvas { display: block; }
-  #v { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
-  #toast { position: fixed; left: 50%; top: 22px; transform: translateX(-50%) translateY(-20px); z-index: 6;
-    padding: 10px 20px; border-radius: 999px; background: rgba(8,12,22,.8); color: #fff; font-size: 15px;
-    opacity: 0; transition: all .4s; pointer-events: none; max-width: 80vw; text-align: center; }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  #hint { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; font-size: 13px;
-    color: rgba(255,255,255,.85); padding: 8px 18px; border-radius: 999px; background: rgba(8,12,22,.6);
-    opacity: 0; transition: opacity 1s; pointer-events: none; max-width: 92vw; text-align: center; line-height: 1.6; }
-  #hint.show { opacity: 1; }
+html,
+body {
+margin: 0;
+height: 100%;
+background: #06201a;
+overflow: hidden;
+font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif;
+color: #fff
+}
+
+canvas#c {
+position: fixed;
+inset: 0;
+width: 100%;
+height: 100%;
+display: block
+}
+
+#v {
+position: fixed;
+left: 0;
+top: 0;
+width: 2px;
+height: 2px;
+opacity: 0;
+pointer-events: none
+}
+
+#intro {
+position: fixed;
+inset: 0;
+z-index: 5;
+display: flex;
+align-items: center;
+justify-content: center;
+background: radial-gradient(ellipse at 50% 45%, rgba(10, 50, 36, .35), rgba(3, 20, 15, .78));
+transition: opacity .9s
+}
+
+#intro.hide {
+opacity: 0;
+pointer-events: none
+}
+
+.card {
+text-align: center;
+max-width: 500px;
+margin: 0 20px;
+padding: 38px 42px;
+border-radius: 30px;
+background: rgba(255, 255, 255, .08);
+border: 1px solid rgba(255, 255, 255, .16);
+-webkit-backdrop-filter: blur(16px);
+backdrop-filter: blur(16px);
+box-shadow: 0 24px 90px rgba(0, 0, 0, .35)
+}
+
+.card h1 {
+margin: 0 0 10px;
+font-size: 34px;
+font-weight: 600;
+letter-spacing: .3px
+}
+
+.card p {
+margin: 0 0 22px;
+line-height: 1.5;
+color: rgba(255, 255, 255, .82);
+font-size: 16px
+}
+
+.card p.small {
+margin: 20px 0 0;
+font-size: 13px;
+color: rgba(255, 255, 255, .58)
+}
+
+.btns {
+display: flex;
+gap: 12px;
+justify-content: center;
+flex-wrap: wrap
+}
+
+button {
+font: inherit;
+font-size: 16px;
+padding: 13px 24px;
+border-radius: 999px;
+border: 0;
+cursor: pointer;
+color: #0a2a1f;
+background: linear-gradient(135deg, #ffd9ec, #d6c4ff);
+font-weight: 600;
+transition: transform .15s
+}
+
+button:hover {
+transform: scale(1.04)
+}
+
+button.ghost {
+background: rgba(255, 255, 255, .12);
+color: #fff;
+border: 1px solid rgba(255, 255, 255, .25)
+}
+
+/* ---------- Floor Studio Side Panel ---------- */
+#panel {
+position: fixed;
+left: 12px;
+top: 12px;
+width: 304px;
+max-height: calc(100vh - 24px);
+overflow-y: auto;
+z-index: 8;
+background: rgba(8, 28, 22, .92);
+border: 1px solid rgba(80, 220, 160, .35);
+border-radius: 14px;
+padding: 12px 14px 14px;
+font-size: 12px;
+line-height: 1.35;
+cursor: default;
+box-shadow: 0 16px 40px rgba(0, 0, 0, .7);
+display: none;
+-webkit-backdrop-filter: blur(12px);
+backdrop-filter: blur(12px);
+}
+#panel.open { display: block; }
+#panel * { box-sizing: border-box; }
+#panel .ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #6ee7d0; font-weight: 700; }
+#panel section { border-top: 1px solid rgba(255,255,255,.1); padding: 9px 0 3px; margin-top: 7px; }
+#panel h4 { margin: 0 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6ee7d0; }
+#panel .row { display: flex; gap: 5px; align-items: center; margin-bottom: 6px; }
+#panel .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px; }
+#panel button, #panel select { font: inherit; color: #e8eef8; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16); border-radius: 8px; padding: 6px 7px; cursor: pointer; }
+#panel button:hover { background: rgba(255,255,255,.15); }
+#panel button.on { background: rgba(60,220,170,.25); border-color: #3ce0aa; color: #fff; }
+#panel select { flex: 1; min-width: 0; background: #0a2a1f; }
+#panel label { display: flex; justify-content: space-between; margin-bottom: 2px; color: #cbd5e1; }
+#panel label b { color: #6ee7d0; font-weight: 600; font-family: ui-monospace, Menlo, Consolas, monospace; }
+#panel input[type=range] { width: 100%; margin: 0 0 8px; accent-color: #3ce0aa; }
+#panel .small { color: #94a3b8; font-size: 11px; margin: 0 0 6px; }
+#panel kbd { background: rgba(255,255,255,.12); border-radius: 4px; padding: 0 4px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; }
+
+#toast {
+position: fixed;
+left: 50%;
+top: 22px;
+transform: translateX(-50%) translateY(-20px);
+z-index: 6;
+padding: 10px 20px;
+border-radius: 999px;
+background: rgba(10, 30, 24, .75);
+color: #fff;
+font-size: 15px;
+opacity: 0;
+-webkit-backdrop-filter: blur(8px);
+backdrop-filter: blur(8px);
+transition: all .4s;
+pointer-events: none;
+max-width: 80vw;
+text-align: center
+}
+
+#toast.show {
+opacity: 1;
+transform: translateX(-50%) translateY(0)
+}
+
+#hint {
+position: fixed;
+left: 50%;
+bottom: 16px;
+transform: translateX(-50%);
+z-index: 4;
+font-size: 13px;
+color: rgba(255, 255, 255, .75);
+padding: 8px 18px;
+border-radius: 999px;
+background: rgba(10, 30, 24, .5);
+opacity: 0;
+transition: opacity 1s;
+pointer-events: none;
+white-space: nowrap
+}
+
+#hint.show {
+opacity: 1
+}
 </style>
 </head>
+
 <body>
 <canvas id="c"></canvas>
-<video id="v" autoplay playsinline muted></video>
+<video id="v" playsinline muted></video>
+
+<div id="intro">
+<div class="card">
+<h1>Butterfly Garden</h1>
+<p>Walk, wave, or move &mdash; flowers bloom where you go and butterflies come to find you.</p>
+<div class="btns">
+<button id="bCam">Start camera</button>
+<button id="bMouse" class="ghost">Use mouse / touch</button>
+</div>
+<p class="small">Use Chrome or Edge and allow camera access. Press F for fullscreen.</p>
+</div>
+</div>
+
+<!-- ===================== FLOOR STUDIO SIDE PANEL ===================== -->
+<aside id="panel">
+<div class="ph"><b>Garden Studio</b><button id="pClose" title="Close (Tab)">×</button></div>
+
+<section>
+<h4>Flower Theme</h4>
+<div class="grid2" id="pThemes">
+<button class="on" data-theme="multi">Normal Multi</button>
+<button data-theme="pastel">Pastel Dream</button>
+<button data-theme="sunset">Sunset Warm</button>
+<button data-theme="neon">Electric Neon</button>
+<button data-theme="forest">Deep Forest</button>
+</div>
+</section>
+
+<section>
+<h4>Camera & Interaction</h4>
+<div class="row">
+<button id="pCamToggle" style="flex:1">Camera: OFF</button>
+<button id="pCamNext" style="flex:1">Next Cam <kbd>C</kbd></button>
+</div>
+<div class="row">
+<button id="pMirror" style="flex:1">Mirror: OFF <kbd>M</kbd></button>
+<button id="pDemo" style="flex:1">Demo Mover: ON <kbd>A</kbd></button>
+</div>
+<label>Motion Sensitivity <b id="vSens">1.00</b></label>
+<input type="range" id="sSens" min="0.4" max="4" step="0.1" value="1">
+</section>
+
+<section>
+<h4>View & Transform</h4>
+<div class="row">
+<button id="pRot" style="flex:1">Rotate View <kbd>&larr;&rarr;</kbd></button>
+<button id="pResetView" style="flex:1">Reset View <kbd>0</kbd></button>
+</div>
+<label>Zoom Scale <b id="vZoom">100%</b></label>
+<input type="range" id="sZoom" min="50" max="200" step="5" value="100">
+</section>
+
+<section>
+<h4>Shortcuts & Help</h4>
+<div class="small">
+• <kbd>Tab</kbd> Toggle this panel<br>
+• <kbd>F</kbd> Fullscreen &nbsp;·&nbsp; <kbd>D</kbd> Motion debug<br>
+• <kbd>H</kbd> Toggle bottom hint banner
+</div>
+</section>
+</aside>
+
 <div id="toast"></div>
-<div id="hint">F fullscreen &nbsp;·&nbsp; M mirror &nbsp;·&nbsp; V flip &nbsp;·&nbsp; C switch camera &nbsp;·&nbsp; I list cameras
-  &nbsp;·&nbsp; D motion view &nbsp;·&nbsp; &minus; / + sensitivity &nbsp;·&nbsp; A demo &nbsp;·&nbsp; H hide<br>
-  &larr; / &rarr; rotate picture &nbsp;·&nbsp; &uarr; / &darr; rotate camera &nbsp;·&nbsp; , / . shrink / fill camera view
-  &nbsp;·&nbsp; Shift+arrows move camera view &nbsp;·&nbsp; 0 reset &nbsp;·&nbsp; 1 / 2 gap &nbsp;·&nbsp; G grid &nbsp;·&nbsp; R pickups<br>
-  <b>Focus:</b> P mode (all / zone / one person) &nbsp;·&nbsp; Z draw zone &nbsp;·&nbsp; X clear zone &nbsp;·&nbsp; L re-lock
-  &nbsp;·&nbsp; [ / ] min size</div>
+<div id="hint">Tab panel &nbsp;·&nbsp; F fullscreen &nbsp;·&nbsp; M mirror &nbsp;·&nbsp; C switch camera &nbsp;·&nbsp; D motion view
+&nbsp;·&nbsp; &minus; / + sensitivity &nbsp;·&nbsp; A demo &nbsp;·&nbsp; H hide</div>
 
 <script>
-const q = new URLSearchParams(location.search);
-const SIDE = (q.get('side') || 'full').toLowerCase();
-const OVAL = (q.get('track') || '').toLowerCase() === 'oval';
-const ROUND = q.get('round') === '1';
-const RESPAWN_MS = parseInt(q.get('respawn') || '4000', 10);
+(() => {
+'use strict';
 
-let saved = {};
-try { saved = JSON.parse(localStorage.getItem('kart_' + SIDE) || '{}'); } catch (e) {}
-if (saved.v !== 2) saved = { rot: saved.rot, gap: saved.gap };
-const pick = (n, d) => q.has(n) ? q.get(n) : (saved[n] !== undefined ? saved[n] : d);
-let MIRROR = String(pick('mirror', 0)) === '1';
-let FLIP = String(pick('flip', 0)) === '1';
-let SPARKLES = String(pick('sparkles', 0)) === '1';
-let SENS = parseFloat(pick('sens', 1));
-let ROT = ((parseInt(pick('rot', 0), 10) % 4) + 4) % 4;
-let CAMROT = ((parseInt(pick('camrot', 0), 10) % 4) + 4) % 4;
-let GAP = parseFloat(pick('gap', 0.5));
-let CAMZOOM = parseFloat(pick('zoom', 1));
-let CAMX = parseFloat(pick('camx', 0));
-let CAMY = parseFloat(pick('camy', 0));
-let ZONE = saved.zone || null;
-let PMODE = (saved.pmode | 0) % 3;
-let MINAREA = saved.minArea || 10;
-
-function saveSettings() {
-  try {
-    localStorage.setItem('kart_' + SIDE, JSON.stringify({
-      v: 2, sparkles: SPARKLES ? 1 : 0, mirror: MIRROR ? 1 : 0, flip: FLIP ? 1 : 0,
-      sens: SENS, rot: ROT, camrot: CAMROT, gap: GAP, zoom: CAMZOOM, camx: CAMX, camy: CAMY,
-      zone: ZONE, pmode: PMODE, minArea: MINAREA
-    }));
-  } catch (e) {}
-}
-
-const YELLOW = '#fff200', PINK = '#ff1fb4', PURPLE = '#a926ff', GREEN = '#39ff14', WHITE = '#ffffff';
-const HUES = [56, 120, 322, 280, 322, 56, 120];
-
-const cv = document.getElementById('c');
-const dctx = cv.getContext('2d');
-const sc = document.createElement('canvas');
-const ctx = sc.getContext('2d');
-const vid = document.getElementById('v');
-const toastEl = document.getElementById('toast'), hintEl = document.getElementById('hint');
-
-let vw, vh, W, H, offset, geo, trackLayer, items = [], ambient = [];
-let showCal = false, debug = false, demo = false;
-
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = a + 0x6D2B79F5 | 0;
-    let t = Math.imul(a ^ a >>> 15, 1 | a);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+const video = $('v');
+const TAU = Math.PI * 2;
+const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const hsl = (h, s, l) => `hsl(${h},${s}%,${l}%)`;
 
-function hsl(h, l, a) {
-  if (h < 0) return `hsla(0,0%,100%,${a === undefined ? 1 : a})`;
-  return `hsla(${h},100%,${l}%,${a === undefined ? 1 : a})`;
+let W = 0, H = 0, sc = 1, dpr = 1;
+let viewRot = 0; // 0, 1, 2, 3 (90 deg increments)
+let viewZoom = 1; // zoom factor
+
+/* ------------------------------------------------------------------ */
+/*  Soft glow sprites                                                  */
+/* ------------------------------------------------------------------ */
+function makeGlow(h, s, l) {
+const c = document.createElement('canvas');
+c.width = c.height = 64;
+const g = c.getContext('2d');
+const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+gr.addColorStop(0, `hsla(${h},${s}%,${l}%,0.9)`);
+gr.addColorStop(0.35, `hsla(${h},${s}%,${l}%,0.28)`);
+gr.addColorStop(1, `hsla(${h},${s}%,${l}%,0)`);
+g.fillStyle = gr;
+g.fillRect(0, 0, 64, 64);
+return c;
+}
+const glowWarm = makeGlow(45, 100, 72);
+const glowCache = {};
+function glowFor(h) {
+const k = (Math.round(h / 30) * 30) % 360;
+return glowCache[k] || (glowCache[k] = makeGlow(k, 95, 72));
 }
 
-let toastTimer = 0, hintTimer = 0;
-function toast(msg, ms = 2400) {
-  toastEl.textContent = msg;
-  toastEl.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+/* ------------------------------------------------------------------ */
+/*  Motion field                                                       */
+/* ------------------------------------------------------------------ */
+const SW = 64, SH = 36;
+const mf = new Float32Array(SW * SH);
+const raw = new Float32Array(SW * SH);
+const prev = new Float32Array(SW * SH);
+const cur = new Float32Array(SW * SH);
+const trail = new Float32Array(SW * SH);
+const camCanvas = document.createElement('canvas');
+camCanvas.width = SW; camCanvas.height = SH;
+const cctx = camCanvas.getContext('2d', { willReadFrequently: true });
+
+let camOn = false, stream = null, devices = [], devIdx = 0;
+let mirror = false, sens = 1, demo = true, debug = false, havePrev = false, lastVT = -1;
+
+function mfAt(X, Y) {
+const cx = (X / W * SW) | 0, cy = (Y / H * SH) | 0;
+if (cx < 0 || cy < 0 || cx >= SW || cy >= SH) return 0;
+return mf[cy * SW + cx];
+}
+
+function inject(X, Y, r, str) {
+const cx = X / W * SW, cy = Y / H * SH;
+const x0 = Math.max(0, Math.floor(cx - r - 1)), x1 = Math.min(SW - 1, Math.ceil(cx + r + 1));
+const y0 = Math.max(0, Math.floor(cy - r - 1)), y1 = Math.min(SH - 1, Math.ceil(cy + r + 1));
+for (let y = y0; y <= y1; y++) {
+for (let x = x0; x <= x1; x++) {
+const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
+if (d < 1) {
+const v = str * (1 - d * d), i = y * SW + x;
+if (v > mf[i]) mf[i] = v;
+}
+}
+}
+}
+
+function processCamera() {
+if (!camOn || video.readyState < 2) return;
+if (video.currentTime === lastVT) return;
+lastVT = video.currentTime;
+cctx.drawImage(video, 0, 0, SW, SH);
+const d = cctx.getImageData(0, 0, SW, SH).data;
+
+const thr = 24 / sens, range = 35 / sens;
+let over = 0;
+for (let y = 0; y < SH; y++) {
+for (let x = 0; x < SW; x++) {
+const i = y * SW + x, p = i * 4;
+const g = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
+cur[i] = g;
+const diff = havePrev ? Math.abs(g - prev[i]) : 0;
+const v = diff > thr ? Math.min(1, (diff - thr) / range) : 0;
+if (diff > thr) over++;
+raw[y * SW + (mirror ? SW - 1 - x : x)] = v;
+}
+}
+for (let i = 0; i < prev.length; i++) prev[i] = prev[i] * 0.4 + cur[i] * 0.6;
+if (!havePrev) { havePrev = true; return; }
+if (over > SW * SH * 0.55) return;
+for (let y = 1; y < SH - 1; y++) {
+for (let x = 1; x < SW - 1; x++) {
+const i = y * SW + x;
+const nb = Math.max(raw[i - 1], raw[i + 1], raw[i - SW], raw[i + SW]) * 0.85;
+const v = Math.max(raw[i], nb);
+if (v > 0.35 && v > mf[i]) mf[i] = v;
+}
+}
+}
+
+const RX = 8, RY = 5;
+const hW = new Float32Array(RX * RY), hX = new Float32Array(RX * RY), hY = new Float32Array(RX * RY);
+let hot = [], hotMax = null;
+function computeHot() {
+hW.fill(0); hX.fill(0); hY.fill(0);
+for (let y = 0; y < SH; y++) {
+const ry = Math.floor(y * RY / SH);
+for (let x = 0; x < SW; x++) {
+const v = mf[y * SW + x];
+if (v > 0.35) {
+const k = ry * RX + Math.floor(x * RX / SW);
+hW[k] += v; hX[k] += x * v; hY[k] += y * v;
+}
+}
+}
+hot = []; hotMax = null;
+for (let k = 0; k < RX * RY; k++) {
+if (hW[k] > 1.2) {
+const h = { x: (hX[k] / hW[k] + 0.5) / SW * W, y: (hY[k] / hW[k] + 0.5) / SH * H, s: Math.min(1, hW[k] / 10) };
+hot.push(h);
+if (!hotMax || h.s > hotMax.s) hotMax = h;
+}
+}
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scene: background, grass, flowers                                  */
+/* ------------------------------------------------------------------ */
+const bg = document.createElement('canvas');
+const vig = document.createElement('canvas');
+
+function buildBackground() {
+bg.width = vig.width = cv.width;
+bg.height = vig.height = cv.height;
+const b = bg.getContext('2d');
+b.setTransform(dpr, 0, 0, dpr, 0, 0);
+const g = b.createLinearGradient(0, 0, 0, H);
+g.addColorStop(0, '#0a2b33');
+g.addColorStop(0.28, '#0e3f3b');
+g.addColorStop(0.6, '#16643f');
+g.addColorStop(1, '#2b8d4b');
+b.fillStyle = g; b.fillRect(0, 0, W, H);
+b.globalCompositeOperation = 'lighter';
+const sun = b.createRadialGradient(W * 0.5, -H * 0.1, 0, W * 0.5, -H * 0.1, H * 0.95);
+sun.addColorStop(0, 'rgba(255,214,140,0.30)'); sun.addColorStop(1, 'rgba(255,214,140,0)');
+b.fillStyle = sun; b.fillRect(0, 0, W, H);
+for (let i = 0; i < 46; i++) {
+const x = rand(0, W), y = rand(0, H * 0.55), r = rand(18, 80) * sc;
+const gr = b.createRadialGradient(x, y, 0, x, y, r);
+const hue = rand(40, 170);
+gr.addColorStop(0, `hsla(${hue},70%,70%,${rand(0.05, 0.1)})`);
+gr.addColorStop(1, `hsla(${hue},70%,70%,0)`);
+b.fillStyle = gr; b.fillRect(x - r, y - r, r * 2, r * 2);
+}
+for (let i = 0; i < 70; i++) {
+const x = rand(0, W), y = rand(H * 0.4, H), r = rand(30, 110) * sc;
+const gr = b.createRadialGradient(x, y, 0, x, y, r);
+gr.addColorStop(0, 'rgba(255,235,160,0.05)'); gr.addColorStop(1, 'rgba(255,235,160,0)');
+b.fillStyle = gr; b.fillRect(x - r, y - r, r * 2, r * 2);
+}
+const v = vig.getContext('2d');
+v.setTransform(dpr, 0, 0, dpr, 0, 0);
+const vg = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.38, W / 2, H / 2, Math.hypot(W, H) * 0.55);
+vg.addColorStop(0, 'rgba(2,12,10,0)'); vg.addColorStop(1, 'rgba(2,12,10,0.5)');
+v.fillStyle = vg; v.fillRect(0, 0, W, H);
+}
+
+const GREENS = ['#0e4430', '#135a39', '#1a7242', '#238a4b', '#35a257', '#58bd68'];
+const LW = [1.6, 1.8, 2.0, 2.3, 2.2, 2.0];
+let backBuckets = [], frontBuckets = [], flowers = [], pollen = [];
+
+/* Flower Palettes */
+let currentTheme = 'multi';
+const THEMES = {
+multi: [
+[335, 85, 74], [330, 90, 64], [265, 80, 78], [275, 75, 66], [48, 95, 70],
+[20, 95, 75], [8, 88, 70], [350, 60, 94], [205, 85, 76], [310, 75, 68]
+],
+pastel: [
+[300, 60, 85], [220, 65, 88], [180, 50, 82], [40, 70, 85], [340, 70, 88]
+],
+sunset: [
+[15, 95, 68], [35, 95, 65], [340, 85, 72], [48, 100, 60], [300, 70, 65]
+],
+neon: [
+[140, 100, 55], [300, 100, 65], [60, 100, 55], [190, 100, 60], [320, 100, 60]
+],
+forest: [
+[90, 50, 65], [130, 45, 60], [45, 60, 70], [70, 55, 65], [160, 40, 65]
+]
+};
+
+function getActivePalette() {
+return THEMES[currentTheme] || THEMES.multi;
+}
+
+function makeFlower(x, y, s) {
+const PAL = getActivePalette();
+const PAL_CLUSTER = [PAL[2] || PAL[0], PAL[3] || PAL[1], PAL[4] || PAL[0], PAL[0]];
+
+const rr = Math.random();
+const type = rr < 0.32 ? 0 : rr < 0.62 ? 1 : rr < 0.82 ? 2 : 3;
+const pal = type === 3 ? PAL_CLUSTER[(Math.random() * PAL_CLUSTER.length) | 0]
+: PAL[(Math.random() * PAL.length) | 0];
+const h = rand(70, 150) * s * sc;
+const f = {
+x, y, s, type, h,
+r: rand(15, 28) * s * sc * (type === 2 ? 0.9 : 1),
+ph: rand(0, TAU), rot: rand(0, TAU),
+bloom: rand(0.25, 0.5), base: rand(0.25, 0.4),
+n: type === 0 ? 10 + ((Math.random() * 5) | 0) : 8,
+c1: hsl(pal[0], pal[1], pal[2]),
+c2: hsl(pal[0], Math.max(40, pal[1] - 8), Math.min(96, pal[2] + 13)),
+c3: type === 0 ? '#ffd24d' : '#ffb52e',
+stemCol: '#1f7a40', leafCol: '#2c9a52', leafDir: Math.random() < 0.5 ? -1 : 1,
+hue: pal[0], glow: glowFor(pal[0]),
+hx: x, hy: y - h, push: 0, pop: 0, dots: []
+};
+if (type === 3) {
+for (let i = 0; i < 22; i++) {
+const a = rand(0, TAU), rad = Math.sqrt(Math.random());
+f.dots.push({ x: Math.cos(a) * rad, y: Math.sin(a) * rad * 0.9 - 0.1, a: Math.random() < 0.45 });
+}
+}
+return f;
+}
+
+function addBlade(buckets, x, y, h, bi) {
+buckets[bi].push({ x, y, h, ph: rand(0, TAU), push: 0 });
+}
+
+function buildGarden() {
+flowers = [];
+backBuckets = GREENS.map(() => []);
+frontBuckets = GREENS.map(() => []);
+const n = clamp(Math.round(W * H / 15000), 55, 160);
+for (let i = 0; i < n; i++) {
+let x = 0, y = 0, s = 1, ok = false;
+for (let k = 0; k < 14 && !ok; k++) {
+x = rand(0.02, 0.98) * W;
+y = H * (0.36 + 0.62 * Math.sqrt(Math.random()));
+s = 0.5 + 0.8 * ((y / H - 0.36) / 0.62);
+ok = true;
+const md = 34 * sc * s;
+for (const o of flowers) {
+const dx = o.x - x, dy = (o.y - y) * 1.6;
+if (dx * dx + dy * dy < md * md) { ok = false; break; }
+}
+}
+if (ok) flowers.push(makeFlower(x, y, s));
+}
+flowers.sort((a, b) => a.y - b.y);
+
+const nb = clamp(Math.round(W * H / 900), 700, 2400);
+for (let i = 0; i < nb; i++) {
+const y = H * (0.3 + 0.72 * Math.pow(Math.random(), 0.85));
+const d = clamp((y / H - 0.3) / 0.72, 0, 1);
+const h = (14 + rand(0, 1) * (24 + 40 * d)) * sc * (0.7 + 0.7 * d);
+const bi = clamp(Math.floor(d * 3 + rand(0, 3)), 0, 5);
+addBlade(backBuckets, rand(-10, W + 10), y, h, bi);
+}
+for (const f of flowers) {
+for (let k = 0; k < 3; k++) {
+addBlade(frontBuckets, f.x + rand(-12, 12) * sc * f.s, f.y + rand(0, 4) * sc,
+rand(20, 44) * sc * f.s, 3 + ((Math.random() * 3) | 0));
+}
+}
+for (let i = 0; i < 140; i++) {
+addBlade(frontBuckets, rand(-10, W + 10), H * rand(0.93, 1.03), rand(40, 95) * sc, 2 + ((Math.random() * 4) | 0));
+}
+pollen = [];
+for (let i = 0; i < 70; i++) {
+pollen.push({ x: rand(0, W), y: rand(0, H), vx: rand(-6, 6), vy: rand(-14, -3), ph: rand(0, TAU), size: rand(8, 20) });
+}
 }
 
 function resize() {
-  cv.width = window.innerWidth;
-  cv.height = window.innerHeight;
-  vw = sc.width = cv.width;
-  vh = sc.height = cv.height;
-
-  const gapPx = GAP * vw;
-  W = SIDE === 'full' ? vw : vw * 2 + gapPx;
-  H = vh;
-  offset = SIDE === 'right' ? vw + gapPx : 0;
-  if (OVAL) {
-    geo = { cx: W / 2, cyc: H * 0.5, ry: H * 0.39, rx: W * 0.43, tw: H * 0.15 };
-  } else {
-    const ry = H * 0.94;
-    geo = { cx: W / 2, cyc: H * 1.05, ry: ry, rx: ROUND ? ry : W * 0.44, tw: H * 0.15 };
-  }
-  buildTrack();
-  buildItems();
+dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+W = window.innerWidth; H = window.innerHeight;
+cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+sc = Math.sqrt(W * H) / 1000;
+buildBackground();
+buildGarden();
+seedButterflies();
 }
 
-function trackPt(a, o) {
-  return {
-    x: geo.cx + (geo.rx + o) * Math.cos(a),
-    y: geo.cyc + (geo.ry + o) * Math.sin(a)
-  };
+/* ------------------------------------------------------------------ */
+/*  Butterflies                                                        */
+/* ------------------------------------------------------------------ */
+const BPAL = [
+{ h: 335, c1: 'rgba(255,150,185,0.85)', c2: 'rgba(255,220,235,0.95)' },
+{ h: 265, c1: 'rgba(195,160,255,0.85)', c2: 'rgba(235,220,255,0.95)' },
+{ h: 48, c1: 'rgba(255,215,110,0.85)', c2: 'rgba(255,245,200,0.95)' },
+{ h: 205, c1: 'rgba(120,195,255,0.85)', c2: 'rgba(210,240,255,0.95)' },
+{ h: 320, c1: 'rgba(255,130,200,0.85)', c2: 'rgba(255,210,235,0.95)' }
+];
+
+const WING_UP = new Path2D();
+WING_UP.moveTo(0, -0.05); WING_UP.bezierCurveTo(0.2, -0.85, 1.1, -1.05, 1.15, -0.35);
+WING_UP.bezierCurveTo(1.1, 0.05, 0.4, 0.1, 0, 0.05); WING_UP.closePath();
+
+const WING_LO = new Path2D();
+WING_LO.moveTo(0, 0.02); WING_LO.bezierCurveTo(0.65, -0.02, 0.95, 0.5, 0.6, 0.9);
+WING_LO.bezierCurveTo(0.3, 1.05, 0.05, 0.65, 0, 0.35); WING_LO.closePath();
+
+let butterflies = [], bid = 0;
+const MAXB = 40;
+
+function spawnButterfly(x, y, perm) {
+const p = BPAL[(Math.random() * BPAL.length) | 0];
+const b = {
+id: bid++, x, y,
+vx: rand(-20, 20) * sc, vy: -rand(15, 50) * sc,
+ang: -Math.PI / 2,
+size: rand(28, 46) * sc, c1: p.c1, c2: p.c2, hue: p.h,
+flap: rand(0, TAU), speed: rand(70, 120) * sc,
+alpha: perm ? 0.85 : 0, grow: perm ? 1 : 0,
+age: 0, life: perm ? 1e9 : rand(30, 50), perm,
+wt: { x: rand(0.1, 0.9) * W, y: rand(0.15, 0.7) * H },
+dead: false
+};
+butterflies.push(b);
+return b;
 }
 
-function buildTrack() {
-  trackLayer = document.createElement('canvas');
-  trackLayer.width = vw; trackLayer.height = vh;
-  const t = trackLayer.getContext('2d');
-  t.translate(-offset, 0);
-  const { cx, cyc, rx, ry, tw } = geo;
-  const cb = tw * 0.13;
-  const path = (g, d) => {
-    g.beginPath();
-    g.ellipse(cx, cyc, rx + d, ry + d, 0, OVAL ? 0 : Math.PI, 2 * Math.PI);
-  };
-  t.lineCap = 'butt';
-
-  t.save();
-  t.shadowColor = 'rgba(170,70,255,0.95)';
-  t.shadowBlur = H * 0.05;
-  t.strokeStyle = 'rgba(170,70,255,0.55)';
-  t.lineWidth = tw + cb * 2;
-  path(t, 0); t.stroke();
-  t.restore();
-
-  t.lineWidth = tw + cb * 2;
-  t.strokeStyle = YELLOW;
-  path(t, 0); t.stroke();
-  t.strokeStyle = PINK;
-  t.setLineDash([cb * 3, cb * 9]);
-  path(t, 0); t.stroke();
-  t.strokeStyle = GREEN;
-  t.lineDashOffset = -cb * 6;
-  path(t, 0); t.stroke();
-  t.setLineDash([]);
-  t.lineDashOffset = 0;
-
-  t.lineWidth = tw;
-  t.strokeStyle = PURPLE;
-  path(t, 0); t.stroke();
-
-  t.strokeStyle = WHITE;
-  t.lineWidth = tw * 0.035;
-  path(t, tw * 0.44); t.stroke();
-  path(t, -tw * 0.44); t.stroke();
-
-  t.lineWidth = tw * 0.05;
-  t.strokeStyle = WHITE;
-  t.setLineDash([tw * 0.34, tw * 0.26]);
-  path(t, 0); t.stroke();
-  t.setLineDash([]);
-
-  if (OVAL) {
-    const a = Math.PI / 2 + 0.9;
-    const p = trackPt(a, 0);
-    const nx = Math.cos(a) / rx, ny = Math.sin(a) / ry;
-    const ang = Math.atan2(ny, nx);
-    const cs = tw / 8;
-    t.save();
-    t.translate(p.x, p.y);
-    t.rotate(ang);
-    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.015;
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 8; c++) {
-        t.fillStyle = (r + c) % 2 === 0 ? WHITE : '#000000';
-        t.fillRect(-tw / 2 + c * cs, (r - 1) * cs, cs, cs);
-      }
-    }
-    t.restore();
-  } else {
-    const sx = cx - rx - tw / 2, sh = tw * 0.22;
-    t.save();
-    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.02;
-    t.fillStyle = WHITE;
-    t.fillRect(sx, cyc - sh, tw, sh);
-    t.restore();
-    const nb = 6, bw = tw / nb;
-    for (let i = 0; i < nb; i += 2) {
-      t.fillStyle = (i / 2) % 2 === 0 ? PINK : GREEN;
-      t.fillRect(sx + i * bw, cyc - sh, bw, sh * 0.5);
-    }
-
-    const fx = cx + rx - tw / 2, cs = tw / 8;
-    t.save();
-    t.shadowColor = '#ffffff'; t.shadowBlur = H * 0.015;
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 8; c++) {
-        t.fillStyle = (r + c) % 2 === 0 ? WHITE : '#000000';
-        t.fillRect(fx + c * cs, cyc - cs * 2 + r * cs, cs, cs);
-      }
-    }
-    t.restore();
-  }
-
-  const rnd = mulberry32(21);
-  ambient = [];
-  for (let i = 0; i < 100; i++) {
-    const a = OVAL ? rnd() * 2 * Math.PI : Math.PI + rnd() * Math.PI;
-    const o = (rnd() - 0.5) * tw * 0.8;
-    const ph = rnd() * 6.28, sz = 1.2 + rnd() * 2.4;
-    const p = trackPt(a, o);
-    const x = p.x - offset;
-    if (x >= -5 && x <= vw + 5) ambient.push({ x, y: p.y, ph, sz });
-  }
+function seedButterflies() {
+butterflies = [];
+for (let i = 0; i < 8; i++) {
+spawnButterfly(rand(0.1, 0.9) * W, rand(0.2, 0.7) * H, true);
+}
 }
 
-function buildItems() {
-  items = [];
-  const rnd = mulberry32(7);
-  const N = OVAL ? 14 : 10;
-  const { tw } = geo;
-  for (let i = 0; i < N; i++) {
-    const a = OVAL ? (i + 0.5) / N * 2 * Math.PI : Math.PI + (i + 0.5) / N * Math.PI;
-    const o = (rnd() - 0.5) * tw * 0.45;
-    const phase = rnd() * 6.28;
-    const p = trackPt(a, o);
-    const lx = p.x - offset;
-    if (SIDE !== 'full') {
-      if (lx < vw * 0.05 || lx > vw * 0.95) continue;
-    }
-    const kind = i % 2;
-    items.push({ x: lx, y: p.y, kind, hue: HUES[(i >> 1) % HUES.length], phase, alive: true, grow: 1 });
-  }
+function updateButterfly(b, dt, t) {
+b.age += dt;
+if (!b.perm && b.age > b.life) {
+b.alpha -= dt * 0.4;
+if (b.alpha <= 0) { b.dead = true; return; }
+} else {
+b.alpha = Math.min(0.85, b.alpha + dt * 0.8);
 }
-let clearedAt = 0;
+b.grow = Math.min(1, b.grow + dt * 1.2);
 
-function reviveAll() {
-  items.forEach((it, i) => { it.alive = true; it.grow = -i * 0.12; });
+const dx = b.wt.x - b.x, dy = b.wt.y - b.y;
+const dist = Math.hypot(dx, dy);
+if (dist < 50 * sc || Math.random() < dt * 0.3) {
+b.wt = { x: rand(0.08, 0.92) * W, y: rand(0.12, 0.75) * H };
 }
 
-const parts = [], rings = [];
-const PAL = [56, 120, 322, 280, -1, 322, 120, 56];
+b.vx += (dx / (dist || 1) * b.speed - b.vx) * dt * 1.5;
+b.vy += (dy / (dist || 1) * b.speed - b.vy) * dt * 1.5;
 
-function emit(x, y, n, burst) {
-  for (let i = 0; i < n; i++) {
-    if (parts.length > 1400) return;
-    const ang = Math.random() * 6.283;
-    const sp = burst ? 40 + Math.random() * 160 : 2 + Math.random() * 8;
-    parts.push({
-      x: x + (Math.random() - 0.5) * (burst ? 4 : 16),
-      y: y + (Math.random() - 0.5) * (burst ? 4 : 16),
-      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - (burst ? 0 : 2),
-      life: 0, max: burst ? 0.8 + Math.random() * 0.7 : 0.4 + Math.random() * 0.45,
-      r: (burst ? 3 : 2) + Math.random() * 2.6,
-      h: PAL[(Math.random() * PAL.length) | 0]
-    });
-  }
+const s2 = Math.hypot(b.vx, b.vy) || 1;
+const px = -b.vy / s2, py = b.vx / s2;
+const w = Math.sin(t * 2.2 + b.id * 1.7) * 25 * sc;
+
+b.x += (b.vx + px * w) * dt;
+b.y += (b.vy + py * w) * dt + Math.sin(b.flap * 0.5) * 8 * sc * dt;
+
+const a = Math.atan2(b.vy, b.vx);
+let da = a - b.ang;
+while (da > Math.PI) da -= TAU;
+while (da < -Math.PI) da += TAU;
+b.ang += da * Math.min(1, dt * 3);
+b.flap += dt * 10;
 }
 
-const GW = 64, GH = 36;
-const sm = document.createElement('canvas'); sm.width = GW; sm.height = GH;
-const sctx = sm.getContext('2d', { willReadFrequently: true });
-const mf = new Float32Array(GW * GH);
-const raw = new Float32Array(GW * GH);
-const prev = new Float32Array(GW * GH);
-const cur = new Float32Array(GW * GH);
-let lastVT = -1;
+function drawButterfly(b) {
+const ws = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(b.flap));
+const sz = b.size * b.grow;
+ctx.save();
+ctx.translate(b.x, b.y);
 
-const cand = new Float32Array(GW * GH);
-const lab = new Int16Array(GW * GH);
-const stk = new Int16Array(GW * GH);
-let camOK = false, stream = null, devices = [], devIdx = 0, havePrev = false;
-let lock = null, zoneEdit = false, dragA = null;
-const LOCK_R = 11, LOCK_HOLD = 5000;
-const MODE_NAMES = ['All movement', 'Only inside the zone', 'One person (largest mover in the zone)'];
+ctx.globalCompositeOperation = 'lighter';
+ctx.globalAlpha = b.alpha * 0.25;
+const gs = sz * 3.2;
+ctx.drawImage(glowFor(b.hue), -gs / 2, -gs / 2, gs, gs);
+
+ctx.rotate(b.ang + Math.PI / 2);
+ctx.scale(sz, sz);
+
+for (let side = -1; side <= 1; side += 2) {
+ctx.save();
+ctx.scale(side * ws, 1);
+
+ctx.globalAlpha = b.alpha * 0.75;
+ctx.fillStyle = b.c1;
+ctx.fill(WING_UP); ctx.fill(WING_LO);
+
+ctx.globalAlpha = b.alpha * 0.9;
+ctx.fillStyle = b.c2;
+ctx.beginPath(); ctx.ellipse(0.5, -0.35, 0.22, 0.15, -0.4, 0, TAU); ctx.fill();
+ctx.beginPath(); ctx.ellipse(0.35, 0.35, 0.12, 0.12, 0, 0, TAU); ctx.fill();
+
+ctx.restore();
+}
+
+ctx.globalAlpha = b.alpha * 0.9;
+ctx.fillStyle = 'rgba(60,40,70,0.85)';
+ctx.beginPath(); ctx.ellipse(0, 0.05, 0.05, 0.35, 0, 0, TAU); ctx.fill();
+ctx.beginPath(); ctx.arc(0, -0.32, 0.07, 0, TAU); ctx.fill();
+
+ctx.restore();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Flowers & interactive sparkles                                     */
+/* ------------------------------------------------------------------ */
+let sparks = [], petals = [], rings = [], ringT = 0;
+const SPARK_HUES = [45, 330, 160, 200, 270];
+
+function addSpark(x, y, hue, scl = 1, spread = 1) {
+const L = rand(1.0, 2.0);
+sparks.push({
+x, y, vx: rand(-25, 25) * sc * spread, vy: -rand(10, 45) * sc * spread, life: L, max: L,
+size: rand(14, 30) * sc * scl, hue, star: Math.random() < 0.4
+});
+}
+function addPetal(f) {
+const L = rand(1.6, 2.8);
+petals.push({
+x: f.hx, y: f.hy, vx: rand(-50, 50) * sc, vy: -rand(30, 110) * sc, rot: rand(0, TAU), vr: rand(-4, 4),
+life: L, max: L, size: rand(7, 13) * sc * (0.7 + 0.5 * f.s), col: f.c1
+});
+}
+function addRing(x, y) {
+rings.push({ x, y, r: 16 * sc, life: 0.9, max: 0.9, hue: rand(0, 360) });
+}
+
+const starSprite = (() => {
+const c = document.createElement('canvas');
+c.width = c.height = 64;
+const g = c.getContext('2d');
+const gr = g.createRadialGradient(32, 32, 0, 32, 32, 16);
+gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+g.fillStyle = '#fff';
+g.beginPath();
+g.moveTo(32, 2); g.quadraticCurveTo(34, 30, 62, 32); g.quadraticCurveTo(34, 34, 32, 62);
+g.quadraticCurveTo(30, 34, 2, 32); g.quadraticCurveTo(30, 30, 32, 2);
+g.fill();
+return c;
+})();
+
+function updateFlowers(dt, t) {
+const wind = 0.7 + 0.3 * Math.sin(t * 0.27);
+for (const f of flowers) {
+const m = Math.max(mfAt(f.hx, f.hy), mfAt(f.x, f.y - f.h * 0.4));
+const tgt = m > 0.12 ? 1 : 0;
+f.pop += (tgt - f.pop) * Math.min(1, dt * (tgt ? 12 : 2.5));
+if (m > 0.12) {
+f.bloom = Math.min(1, f.bloom + dt * 7 * m);
+if (m > 0.45 && Math.random() < dt * 4) addSpark(f.hx, f.hy, f.hue, 0.9, 0.9);
+if (m > 0.5 && Math.random() < dt * 3 && petals.length < 180) addPetal(f);
+} else {
+f.bloom = Math.max(f.base, f.bloom - dt * 0.1);
+}
+const mR = mfAt(f.hx + 50 * sc, f.hy), mL = mfAt(f.hx - 50 * sc, f.hy);
+const target = (mL - mR) * 65 * sc * f.s + (m > 0.1 ? Math.sin(t * 14 + f.ph) * m * 5 * sc : 0);
+f.push += (target - f.push) * Math.min(1, dt * 8);
+const sway = Math.sin(t * 0.9 + f.ph + f.x * 0.004) * 5 * sc * f.s * wind;
+f.hx = f.x + sway + f.push;
+f.hy = f.y - f.h + Math.abs(f.push) * 0.25;
+}
+}
+
+function updateBlades(buckets, dt, t, active) {
+for (const arr of buckets) {
+for (const bl of arr) {
+if (!active) { bl.push *= Math.max(0, 1 - dt * 6); continue; }
+const yy = bl.y - bl.h * 0.5;
+const m = mfAt(bl.x, yy), mL = mfAt(bl.x - 30 * sc, yy), mR = mfAt(bl.x + 30 * sc, yy);
+const target = (mL - mR) * bl.h * 0.9 + Math.sin(t * 16 + bl.ph) * m * bl.h * 0.15;
+bl.push += (target - bl.push) * Math.min(1, dt * 9);
+}
+}
+}
+
+function drawBlades(buckets, t) {
+const wind = 0.7 + 0.3 * Math.sin(t * 0.27);
+ctx.lineCap = 'round';
+for (let b = 0; b < buckets.length; b++) {
+const arr = buckets[b];
+if (!arr.length) continue;
+ctx.strokeStyle = GREENS[b];
+ctx.lineWidth = LW[b] * sc;
+ctx.beginPath();
+for (const bl of arr) {
+const sway = Math.sin(t * 1.1 + bl.x * 0.012 + bl.ph) * bl.h * 0.12 * wind;
+const tx = bl.x + sway + bl.push, ty = bl.y - bl.h + Math.abs(bl.push) * 0.2;
+ctx.moveTo(bl.x, bl.y);
+ctx.quadraticCurveTo(bl.x + (sway + bl.push) * 0.15, bl.y - bl.h * 0.6, tx, ty);
+}
+ctx.stroke();
+}
+}
+
+function petal(len, ww) {
+ctx.beginPath();
+ctx.moveTo(0, 0);
+ctx.quadraticCurveTo(-ww, -len * 0.55, 0, -len);
+ctx.quadraticCurveTo(ww, -len * 0.55, 0, 0);
+ctx.fill();
+}
+
+function drawFlower(f) {
+const r = f.r * (1 + 0.4 * f.pop), open = 0.3 + 0.7 * f.bloom;
+ctx.strokeStyle = f.stemCol; ctx.lineWidth = Math.max(1.6, 2.4 * f.s * sc); ctx.lineCap = 'round';
+ctx.beginPath();
+ctx.moveTo(f.x, f.y);
+ctx.quadraticCurveTo(f.x + (f.hx - f.x) * 0.15, f.y - f.h * 0.55, f.hx, f.hy);
+ctx.stroke();
+const lx = f.x + (f.hx - f.x) * 0.25, ly = f.y - f.h * 0.38;
+ctx.fillStyle = f.leafCol;
+ctx.beginPath(); ctx.ellipse(lx + f.leafDir * r * 0.55, ly, r * 0.6, r * 0.2, -f.leafDir * 0.55, 0, TAU); ctx.fill();
+
+const ga = Math.max((f.bloom - 0.55) * 0.7, f.pop * 0.7);
+if (ga > 0.02) {
+ctx.globalCompositeOperation = 'lighter';
+ctx.globalAlpha = Math.min(0.75, ga);
+const gs = r * (3.8 + 1.6 * f.pop);
+ctx.drawImage(f.glow, f.hx - gs / 2, f.hy - gs / 2, gs, gs);
+ctx.globalAlpha = 1;
+ctx.globalCompositeOperation = 'source-over';
+}
+
+ctx.save();
+ctx.translate(f.hx, f.hy);
+ctx.rotate((f.hx - f.x) / f.h * 0.5 + Math.sin(f.ph) * 0.08);
+if (f.type === 0) {
+const L = r * (0.45 + 0.75 * open), w = L * (0.16 + 0.1 * (1 - open)), n = f.n, st = TAU / n;
+ctx.rotate(f.rot);
+ctx.fillStyle = f.c1;
+for (let i = 0; i < n; i++) { ctx.rotate(st); ctx.beginPath(); ctx.ellipse(0, -L * 0.62, w, L * 0.5, 0, 0, TAU); ctx.fill(); }
+ctx.fillStyle = f.c2; ctx.rotate(st / 2);
+const L2 = L * 0.7;
+for (let i = 0; i < n; i++) { ctx.rotate(st); ctx.beginPath(); ctx.ellipse(0, -L2 * 0.6, w * 0.8, L2 * 0.48, 0, 0, TAU); ctx.fill(); }
+ctx.fillStyle = f.c3; ctx.beginPath(); ctx.arc(0, 0, r * (0.16 + 0.12 * open), 0, TAU); ctx.fill();
+ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(-r * 0.05, -r * 0.05, r * 0.07, 0, TAU); ctx.fill();
+} else if (f.type === 1) {
+const L = r * (0.5 + 0.8 * open), n = 8, st = TAU / n;
+ctx.rotate(f.rot);
+ctx.fillStyle = f.c1;
+for (let i = 0; i < n; i++) { ctx.rotate(st); ctx.beginPath(); ctx.ellipse(0, -L * 0.58, L * 0.33, L * 0.55, 0, 0, TAU); ctx.fill(); }
+ctx.fillStyle = f.c2; ctx.rotate(st / 2);
+for (let i = 0; i < n; i++) { ctx.rotate(st); ctx.beginPath(); ctx.ellipse(0, -L * 0.45, L * 0.2, L * 0.4, 0, 0, TAU); ctx.fill(); }
+ctx.fillStyle = f.c3; ctx.beginPath(); ctx.arc(0, 0, r * (0.14 + 0.1 * open), 0, TAU); ctx.fill();
+} else if (f.type === 2) {
+const L = r * (1.0 + 0.5 * open) * 1.1, w = L * (0.34 + 0.2 * open), sp = 0.08 + 0.5 * open;
+ctx.fillStyle = f.c1;
+ctx.save(); ctx.rotate(-sp); petal(L, w); ctx.restore();
+ctx.save(); ctx.rotate(sp); petal(L, w); ctx.restore();
+ctx.fillStyle = f.c2; petal(L * 0.93, w * 0.9);
+ctx.fillStyle = 'rgba(255,255,255,0.18)';
+ctx.beginPath(); ctx.ellipse(-w * 0.15, -L * 0.5, w * 0.12, L * 0.28, 0.1, 0, TAU); ctx.fill();
+} else {
+const sp = 0.55 + 0.45 * open, dr = r * 0.3 * (0.55 + 0.45 * open);
+ctx.fillStyle = f.c1; ctx.beginPath();
+for (const d of f.dots) { if (d.a) continue; const x = d.x * r * sp, y = d.y * r * sp; ctx.moveTo(x + dr, y); ctx.arc(x, y, dr, 0, TAU); }
+ctx.fill();
+ctx.fillStyle = f.c2; ctx.beginPath();
+for (const d of f.dots) { if (!d.a) continue; const x = d.x * r * sp, y = d.y * r * sp; ctx.moveTo(x + dr * 0.9, y); ctx.arc(x, y, dr * 0.9, 0, TAU); }
+ctx.fill();
+}
+ctx.restore();
+}
+
+function drawShafts(t) {
+ctx.globalCompositeOperation = 'lighter';
+for (let i = 0; i < 4; i++) {
+const cx = W * (0.15 + i * 0.25) + Math.sin(t * 0.12 + i * 1.7) * W * 0.05;
+const w = W * (0.06 + 0.03 * Math.sin(t * 0.2 + i));
+const g = ctx.createLinearGradient(0, 0, 0, H * 0.9);
+g.addColorStop(0, 'rgba(255,232,170,0.07)'); g.addColorStop(1, 'rgba(255,232,170,0)');
+ctx.fillStyle = g;
+ctx.beginPath();
+ctx.moveTo(cx - w * 0.4, 0); ctx.lineTo(cx + w * 0.4, 0);
+ctx.lineTo(cx + w * 1.6 + H * 0.2, H * 0.9); ctx.lineTo(cx - w * 1.2 + H * 0.2, H * 0.9);
+ctx.closePath(); ctx.fill();
+}
+ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main update / draw                                                 */
+/* ------------------------------------------------------------------ */
+const dbg = document.createElement('canvas');
+dbg.width = SW; dbg.height = SH;
+const dctx = dbg.getContext('2d');
+const dimg = dctx.createImageData(SW, SH);
+
+function update(dt, t) {
+const dec = Math.pow(0.07, dt);
+let maxM = 0;
+for (let i = 0; i < mf.length; i++) { mf[i] *= dec; if (mf[i] > maxM) maxM = mf[i]; }
+processCamera();
+if (demo) {
+inject(W * (0.5 + 0.38 * Math.sin(t * 0.35)), H * (0.62 + 0.22 * Math.sin(t * 0.53 + 1)), 4, 1);
+}
+computeHot();
+const tdec = Math.pow(0.2, dt);
+for (let i = 0; i < trail.length; i++) { const v = trail[i] * tdec; trail[i] = mf[i] > v ? mf[i] : v; }
+const active = maxM > 0.04 || hot.length > 0 || demo;
+
+updateFlowers(dt, t);
+updateBlades(backBuckets, dt, t, active);
+updateBlades(frontBuckets, dt, t, active);
+
+if (butterflies.length < MAXB && Math.random() < dt * 1.5) {
+spawnButterfly(rand(0.1, 0.9) * W, H + 50, false);
+}
+
+ringT -= dt;
+if (hotMax && ringT <= 0 && hotMax.s > 0.25) {
+for (const h of hot) if (h.s > 0.25) addRing(h.x, h.y);
+ringT = 0.35;
+}
+for (const b of butterflies) updateButterfly(b, dt, t);
+butterflies = butterflies.filter(b => !b.dead);
+
+if (sparks.length < 400) {
+for (let i = 0; i < mf.length; i++) {
+const v = mf[i];
+if (v > 0.45 && Math.random() < v * 0.25) {
+addSpark(((i % SW) + Math.random()) / SW * W, (((i / SW) | 0) + Math.random()) / SH * H,
+SPARK_HUES[(Math.random() * SPARK_HUES.length) | 0], 0.9, 0.8);
+}
+}
+}
+for (let i = sparks.length - 1; i >= 0; i--) {
+const s = sparks[i];
+s.life -= dt;
+if (s.life <= 0) { sparks[i] = sparks[sparks.length - 1]; sparks.pop(); continue; }
+s.x += s.vx * dt; s.y += s.vy * dt;
+}
+for (let i = petals.length - 1; i >= 0; i--) {
+const p = petals[i];
+p.life -= dt;
+if (p.life <= 0) { petals[i] = petals[petals.length - 1]; petals.pop(); continue; }
+p.vy += 140 * sc * dt;
+p.vx += Math.sin(p.life * 5 + p.rot) * 60 * sc * dt;
+p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+}
+for (let i = rings.length - 1; i >= 0; i--) {
+const r = rings[i];
+r.life -= dt;
+if (r.life <= 0) { rings.splice(i, 1); continue; }
+r.r += 300 * sc * dt;
+}
+for (const p of pollen) {
+p.x += (p.vx + Math.sin(t * 0.5 + p.ph) * 8) * dt * sc;
+p.y += p.vy * dt * sc;
+if (p.y < -20) { p.y = H + 20; p.x = rand(0, W); }
+if (p.x < -20) p.x = W + 20;
+if (p.x > W + 20) p.x = -20;
+}
+}
+
+function drawAura(t) {
+ctx.globalCompositeOperation = 'lighter';
+const cw = W / SW, chh = H / SH;
+for (let i = 0; i < trail.length; i++) {
+const v = trail[i];
+if (v < 0.15) continue;
+const cx = i % SW, cy = (i / SW) | 0;
+const sz = (55 + 85 * v) * sc;
+ctx.globalAlpha = Math.min(0.4, v * 0.45);
+ctx.drawImage(glowFor(t * 50 + cx * 4 + cy * 3), (cx + 0.5) * cw - sz / 2, (cy + 0.5) * chh - sz / 2, sz, sz);
+}
+ctx.globalAlpha = 1;
+ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawRings() {
+ctx.globalCompositeOperation = 'lighter';
+for (const r of rings) {
+const a = r.life / r.max;
+ctx.strokeStyle = `hsla(${r.hue},90%,80%,${a * 0.65})`;
+ctx.lineWidth = Math.max(1.2, 4 * sc * a);
+ctx.beginPath();
+ctx.ellipse(r.x, r.y, r.r, r.r * 0.6, 0, 0, TAU);
+ctx.stroke();
+}
+ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawPetals() {
+for (const p of petals) {
+ctx.save();
+ctx.translate(p.x, p.y);
+ctx.rotate(p.rot);
+ctx.globalAlpha = Math.min(1, (p.life / p.max) * 1.6) * 0.9;
+ctx.fillStyle = p.col;
+ctx.beginPath();
+ctx.ellipse(0, 0, p.size * 0.45, p.size, 0, 0, TAU);
+ctx.fill();
+ctx.restore();
+}
+ctx.globalAlpha = 1;
+}
+
+function draw(t) {
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+ctx.clearRect(0, 0, W, H);
+
+ctx.save();
+// Apply camera rotation & zoom transforms
+ctx.translate(W / 2, H / 2);
+ctx.rotate(viewRot * Math.PI / 2);
+ctx.scale(viewZoom, viewZoom);
+ctx.translate(-W / 2, -H / 2);
+
+ctx.globalAlpha = 1;
+ctx.globalCompositeOperation = 'source-over';
+ctx.drawImage(bg, 0, 0, W, H);
+drawShafts(t);
+
+ctx.globalCompositeOperation = 'lighter';
+for (const h of hot) {
+const r = 140 * sc;
+ctx.globalAlpha = 0.1 + 0.22 * h.s;
+ctx.drawImage(glowWarm, h.x - r, h.y - r, r * 2, r * 2);
+}
+ctx.globalAlpha = 1;
+ctx.globalCompositeOperation = 'source-over';
+
+drawBlades(backBuckets, t);
+for (const f of flowers) drawFlower(f);
+drawBlades(frontBuckets, t);
+drawAura(t);
+drawRings();
+drawPetals();
+
+for (const b of butterflies) drawButterfly(b);
+
+ctx.globalCompositeOperation = 'lighter';
+for (const s of sparks) {
+const a = s.life / s.max, tw = 0.6 + 0.4 * Math.sin(s.life * 18 + s.x), sz = s.size * (0.4 + 0.8 * a);
+ctx.globalAlpha = Math.min(1, a * 1.5) * 0.7;
+ctx.drawImage(glowFor(s.hue), s.x - sz / 2, s.y - sz / 2, sz, sz);
+if (s.star) {
+const ss = sz * 0.85 * tw;
+ctx.globalAlpha = Math.min(1, a * 1.8) * tw * 0.8;
+ctx.drawImage(starSprite, s.x - ss / 2, s.y - ss / 2, ss, ss);
+}
+}
+for (const p of pollen) {
+const tw = 0.5 + 0.5 * Math.sin(t * 1.3 + p.ph * 3);
+ctx.globalAlpha = 0.1 + 0.3 * tw;
+const sz = p.size * sc;
+ctx.drawImage(glowWarm, p.x - sz / 2, p.y - sz / 2, sz, sz);
+}
+ctx.globalAlpha = 1;
+ctx.globalCompositeOperation = 'source-over';
+
+ctx.drawImage(vig, 0, 0, W, H);
+ctx.restore(); // restore rotation/zoom transform
+
+if (debug) {
+for (let i = 0; i < mf.length; i++) {
+const v = mf[i], p = i * 4;
+dimg.data[p] = 255; dimg.data[p + 1] = 200; dimg.data[p + 2] = 80; dimg.data[p + 3] = v * 255;
+}
+dctx.putImageData(dimg, 0, 0);
+ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(14, H - 124, 196, 112);
+ctx.drawImage(dbg, 16, H - 122, 192, 108);
+ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.strokeRect(16, H - 122, 192, 108);
+}
+}
+
+let last = performance.now(), T = 0;
+function frame(now) {
+const dt = Math.min(0.05, (now - last) / 1000);
+last = now; T += dt;
+update(dt, T);
+draw(T);
+requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Camera, input, UI & Side Panel Wiring                              */
+/* ------------------------------------------------------------------ */
+const toastEl = $('toast'), hintEl = $('hint'), introEl = $('intro'), panelEl = $('panel');
+let toastTimer = 0, hintTimer = 0, cursorTimer = 0;
+function toast(msg, ms = 2400) {
+toastEl.textContent = msg;
+toastEl.classList.add('show');
+clearTimeout(toastTimer);
+toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+function showHint(sec) {
+hintEl.classList.add('show');
+clearTimeout(hintTimer);
+if (sec) hintTimer = setTimeout(() => hintEl.classList.remove('show'), sec * 1000);
+}
+function hideIntro() { introEl.classList.add('hide'); showHint(10); }
 
 function stopCamera() {
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = null; camOK = false;
+if (stream) stream.getTracks().forEach(t => t.stop());
+stream = null; camOn = false;
+syncUI();
 }
-async function startCam(id) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('Camera API not available. Use Chrome or Edge.');
-  }
-  stopCamera();
-  const v = { width: { ideal: 640 }, height: { ideal: 480 } };
-  if (id) v.deviceId = { exact: id };
-  stream = await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
-  vid.srcObject = stream;
-  await vid.play();
-  camOK = true; havePrev = false; lastVT = -1;
-  const list = await navigator.mediaDevices.enumerateDevices();
-  devices = list.filter(d => d.kind === 'videoinput');
-  const tr = stream.getVideoTracks()[0];
-  const sid = tr.getSettings().deviceId;
-  devIdx = Math.max(0, devices.findIndex(d => d.deviceId === sid));
-  const isDepth = l => /depth|infrared|\bir\b|stereo/i.test(l || '') && !/rgb|colou?r/i.test(l || '');
-  if (!id && isDepth(tr.label)) {
-    const rgb = devices.find(d => !isDepth(d.label) && d.deviceId !== sid);
-    if (rgb) { devIdx = devices.indexOf(rgb); return startCam(rgb.deviceId); }
-  }
-  toast('Camera ' + (devIdx + 1) + '/' + devices.length + ': ' + (tr.label || 'camera') + (devices.length > 1 ? '  (C = next)' : ''), 4000);
+async function startCamera(id) {
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+throw new Error('Camera API not available. Open this file in Chrome or Edge.');
+}
+stopCamera();
+const v = { width: { ideal: 640 }, height: { ideal: 480 } };
+if (id) v.deviceId = { exact: id };
+stream = await navigator.mediaDevices.getUserMedia({ video: v, audio: false });
+video.srcObject = stream;
+await video.play();
+camOn = true; demo = false; havePrev = false; lastVT = -1;
+const list = await navigator.mediaDevices.enumerateDevices();
+devices = list.filter(d => d.kind === 'videoinput');
+const tr = stream.getVideoTracks()[0];
+const sid = tr.getSettings().deviceId;
+devIdx = Math.max(0, devices.findIndex(d => d.deviceId === sid));
+const isDepth = l => /depth|infrared|\bir\b|stereo/i.test(l || '') && !/rgb|colou?r/i.test(l || '');
+if (!id && isDepth(tr.label)) {
+const rgb = devices.find(d => !isDepth(d.label) && d.deviceId !== sid);
+if (rgb) { devIdx = devices.indexOf(rgb); return startCamera(rgb.deviceId); }
+}
+syncUI();
+toast('Camera ' + (devIdx + 1) + '/' + devices.length + ': ' + (tr.label || 'camera'), 4000);
 }
 async function listCameras() {
-  try {
-    const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-    toast(l.length + ' camera(s) seen: ' + (l.map(d => d.label || '(no name yet)').join(' | ') || 'none'), 9000);
-  } catch (e) { toast('Could not list cameras', 4000); }
+try {
+const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+toast(l.length + ' camera(s) seen: ' + (l.map(d => d.label || '(no name)').join(' | ') || 'none'), 9000);
+} catch (e) { toast('Could not list cameras', 4000); }
 }
 async function nextCamera() {
-  try {
-    const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
-    if (l.length) devices = l;
-  } catch (e) { }
-  if (devices.length < 2) { listCameras(); return; }
-  devIdx = (devIdx + 1) % devices.length;
-  startCam(devices[devIdx].deviceId).catch(e => toast(e.message || 'Could not open that camera', 4000));
+try {
+const l = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+if (l.length) devices = l;
+} catch (e) { }
+if (devices.length < 2) { listCameras(); return; }
+devIdx = (devIdx + 1) % devices.length;
+startCamera(devices[devIdx].deviceId).catch(e => toast(e.message || 'Could not open that camera', 4000));
 }
 
-function filterCandidates(now) {
-  if (PMODE >= 1 && ZONE) {
-    const x0 = ZONE.x0 * GW, x1 = ZONE.x1 * GW, y0 = ZONE.y0 * GH, y1 = ZONE.y1 * GH;
-    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-      if (x + 0.5 < x0 || x + 0.5 > x1 || y + 0.5 < y0 || y + 0.5 > y1) cand[y * GW + x] = 0;
-    }
-  }
-  if (PMODE < 2) return;
-
-  lab.fill(0);
-  const comps = [];
-  for (let i = 0; i < cand.length; i++) {
-    if (cand[i] <= 0 || lab[i]) continue;
-    const id = comps.length + 1;
-    let sp = 0, area = 0, sx = 0, sy = 0;
-    stk[sp++] = i; lab[i] = id;
-    while (sp) {
-      const j = stk[--sp], cx = j % GW, cy = (j / GW) | 0;
-      area++; sx += cx; sy += cy;
-      if (cx > 0 && cand[j - 1] > 0 && !lab[j - 1]) { lab[j - 1] = id; stk[sp++] = j - 1; }
-      if (cx < GW - 1 && cand[j + 1] > 0 && !lab[j + 1]) { lab[j + 1] = id; stk[sp++] = j + 1; }
-      if (cy > 0 && cand[j - GW] > 0 && !lab[j - GW]) { lab[j - GW] = id; stk[sp++] = j - GW; }
-      if (cy < GH - 1 && cand[j + GW] > 0 && !lab[j + GW]) { lab[j + GW] = id; stk[sp++] = j + GW; }
-    }
-    comps.push({ id, area, x: sx / area, y: sy / area });
-  }
-
-  if (!lock) {
-    let best = null;
-    for (const c of comps) if (c.area >= MINAREA && (!best || c.area > best.area)) best = c;
-    if (best) lock = { x: best.x, y: best.y, t: now };
-  }
-  const keep = new Uint8Array(comps.length + 1);
-  if (lock) {
-    let sx = 0, sy = 0, sa = 0;
-    for (const c of comps) {
-      if (Math.hypot(c.x - lock.x, (c.y - lock.y) * 1.6) <= LOCK_R) {
-        keep[c.id] = 1; sx += c.x * c.area; sy += c.y * c.area; sa += c.area;
-      }
-    }
-    if (sa > 0) { lock.x += (sx / sa - lock.x) * 0.6; lock.y += (sy / sa - lock.y) * 0.6; lock.t = now; }
-    else if (now - lock.t > LOCK_HOLD) lock = null;
-  }
-  for (let i = 0; i < cand.length; i++) if (cand[i] > 0 && !keep[lab[i]]) cand[i] = 0;
+function togglePanel(force) {
+const open = typeof force === 'boolean' ? force : !panelEl.classList.contains('open');
+panelEl.classList.toggle('open', open);
 }
 
-function analyze(dt) {
-  const dec = Math.pow(0.07, dt);
-  for (let i = 0; i < mf.length; i++) mf[i] *= dec;
-  if (camOK && vid.readyState >= 2 && vid.currentTime !== lastVT) {
-    lastVT = vid.currentTime;
-    sctx.setTransform(1, 0, 0, 1, 0, 0);
-    sctx.translate(GW / 2 + CAMX * GW, GH / 2 + CAMY * GH);
-    sctx.rotate(CAMROT * Math.PI / 2);
-    sctx.scale((MIRROR ? -1 : 1) * CAMZOOM, (FLIP ? -1 : 1) * CAMZOOM);
-    sctx.drawImage(vid, -GW / 2, -GH / 2, GW, GH);
-    sctx.setTransform(1, 0, 0, 1, 0, 0);
-    const d = sctx.getImageData(0, 0, GW, GH).data;
-
-    const thr = 24 / SENS, range = 35 / SENS;
-    let over = 0;
-    for (let y = 0; y < GH; y++) {
-      for (let x = 0; x < GW; x++) {
-        const i = y * GW + x, p = i * 4;
-        const g = 0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2];
-        cur[i] = g;
-        const diff = havePrev ? Math.abs(g - prev[i]) : 0;
-        const v = diff > thr ? Math.min(1, (diff - thr) / range) : 0;
-        if (diff > thr) over++;
-        raw[y * GW + x] = v;
-      }
-    }
-    for (let i = 0; i < prev.length; i++) prev[i] = prev[i] * 0.4 + cur[i] * 0.6;
-    if (!havePrev) { havePrev = true; return; }
-    if (over > GW * GH * 0.55) return;
-
-    for (let y = 1; y < GH - 1; y++) {
-      for (let x = 1; x < GW - 1; x++) {
-        const i = y * GW + x;
-        const nb = Math.max(raw[i - 1], raw[i + 1], raw[i - GW], raw[i + GW]) * 0.85;
-        const v = Math.max(raw[i], nb);
-        cand[i] = v > 0.35 ? v : 0;
-      }
-    }
-    filterCandidates(performance.now());
-    for (let i = 0; i < cand.length; i++) if (cand[i] > mf[i]) mf[i] = cand[i];
-  }
+function syncUI() {
+$('pCamToggle').textContent = `Camera: ${camOn ? 'ON' : 'OFF'}`;
+$('pCamToggle').classList.toggle('on', camOn);
+$('pMirror').textContent = `Mirror: ${mirror ? 'ON' : 'OFF'}`;
+$('pMirror').classList.toggle('on', mirror);
+$('pDemo').textContent = `Demo Mover: ${demo ? 'ON' : 'OFF'}`;
+$('pDemo').classList.toggle('on', demo);
+$('sSens').value = sens;
+$('vSens').textContent = sens.toFixed(2);
+$('sZoom').value = Math.round(viewZoom * 100);
+$('vZoom').textContent = Math.round(viewZoom * 100) + '%';
+document.querySelectorAll('#pThemes button').forEach(b => {
+b.classList.toggle('on', b.dataset.theme === currentTheme);
+});
 }
 
-/* Converts an object's scene position to the physical displayed position. */
-function sceneToDisplay(sceneX, sceneY) {
-  let x = sceneX - vw / 2;
-  let y = sceneY - vh / 2;
+// Side Panel wiring
+$('pClose').addEventListener('click', () => togglePanel(false));
+document.querySelectorAll('#pThemes button').forEach(b => {
+b.addEventListener('click', () => {
+currentTheme = b.dataset.theme;
+buildGarden(); // Rebuild flowers with new theme colors
+syncUI();
+toast('Flower theme: ' + b.textContent);
+});
+});
 
-  if (ROT % 2 !== 0) {
-    x *= cv.height / cv.width;
-    y *= cv.width / cv.height;
-  }
+$('pCamToggle').addEventListener('click', () => {
+if (camOn) { stopCamera(); toast('Camera stopped'); }
+else { startCamera().then(hideIntro).catch(e => toast('Could not open camera', 4000)); }
+});
+$('pCamNext').addEventListener('click', nextCamera);
+$('pMirror').addEventListener('click', () => { mirror = !mirror; mf.fill(0); trail.fill(0); syncUI(); toast('Mirror ' + (mirror ? 'on' : 'off')); });
+$('pDemo').addEventListener('click', () => { demo = !demo; syncUI(); toast('Demo mover ' + (demo ? 'on' : 'off')); });
 
-  const rad = ROT * Math.PI / 2;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
+$('sSens').addEventListener('input', e => { sens = parseFloat(e.target.value); syncUI(); });
+$('sZoom').addEventListener('input', e => { viewZoom = parseInt(e.target.value, 10) / 100; syncUI(); });
 
-  return {
-    x: cv.width / 2 + x * cos - y * sin,
-    y: cv.height / 2 + x * sin + y * cos
-  };
-}
+$('pRot').addEventListener('click', () => {
+viewRot = (viewRot + 1) % 4;
+syncUI();
+toast('View rotation: ' + (viewRot * 90) + '°');
+});
+$('pResetView').addEventListener('click', () => {
+viewRot = 0; viewZoom = 1; syncUI(); toast('View reset');
+});
 
-function camHits(it, r) {
-  const displayed = sceneToDisplay(it.x, it.y);
+$('bCam').addEventListener('click', () => { startCamera().then(hideIntro).catch(e => toast('Could not open camera', 5000)); });
+$('bMouse').addEventListener('click', () => { demo = false; hideIntro(); toast('Move your mouse or finger over the garden'); });
 
-  const gx = displayed.x / cv.width * GW;
-  const gy = displayed.y / cv.height * GH;
-
-  const scaleX = cv.width / vw;
-  // Multiplied by 1.8 to expand the trigger range for high overhead distance/ceilings
-  const displayedRadius = (r * scaleX) * 1.8;
-  const rc = displayedRadius / cv.width * GW;
-
-  let hits = 0;
-  const x0 = Math.max(0, Math.floor(gx - rc));
-  const x1 = Math.min(GW - 1, Math.ceil(gx + rc));
-  const y0 = Math.max(0, Math.floor(gy - rc));
-  const y1 = Math.min(GH - 1, Math.ceil(gy + rc));
-
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const dist = Math.hypot(x - gx, y - gy);
-      if (mf[y * GW + x] > 0.2 && dist <= rc) {
-        hits++;
-      }
-    }
-  }
-
-  // Lowered threshold count slightly to make pickup collection much more responsive from afar
-  return hits >= 2 ? hits : 0;
-}
-
-function collect(it) {
-  it.alive = false;
-  emit(it.x, it.y, 34, true);
-  rings.push({ x: it.x, y: it.y, t: 0, h: it.hue });
-  if (!items.some(i => i.alive)) clearedAt = performance.now();
-}
-
-function toScene(clientX, clientY) {
-  const x = clientX - cv.width / 2;
-  const y = clientY - cv.height / 2;
-
-  const rad = -ROT * Math.PI / 2;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  const rx = x * cos - y * sin;
-  const ry = x * sin + y * cos;
-
-  if (ROT % 2 !== 0) {
-    return {
-      x: rx * (cv.width / cv.height) + vw / 2,
-      y: ry * (cv.height / cv.width) + vh / 2
-    };
-  }
-
-  return {
-    x: rx + vw / 2,
-    y: ry + vh / 2
-  };
-}
-
-function normRect(a, bx, by) {
-  return { x0: Math.min(a.x, bx), y0: Math.min(a.y, by), x1: Math.max(a.x, bx), y1: Math.max(a.y, by) };
-}
-
-let mouse = null;
 window.addEventListener('pointermove', e => {
-  const p = toScene(e.clientX, e.clientY);
-  if (zoneEdit) {
-    if (dragA) dragA.rect = normRect(dragA, clamp(p.x / vw, 0, 1), clamp(p.y / vh, 0, 1));
-    return;
-  }
-  mouse = p;
-  const displayed = sceneToDisplay(p.x, p.y);
-  const cx = (displayed.x / cv.width * GW) | 0;
-  const cy = (displayed.y / cv.height * GH) | 0;
-  if (cx >= 0 && cy >= 0 && cx < GW && cy < GH) mf[cy * GW + cx] = 1;
+inject(e.clientX, e.clientY, 3.5, 1);
 });
 window.addEventListener('pointerdown', e => {
-  if (!zoneEdit) return;
-  const p = toScene(e.clientX, e.clientY);
-  const x = clamp(p.x / vw, 0, 1), y = clamp(p.y / vh, 0, 1);
-  dragA = { x, y, rect: normRect({ x, y }, x, y) };
+inject(e.clientX, e.clientY, 6, 1);
 });
-window.addEventListener('pointerup', () => {
-  if (!zoneEdit || !dragA) return;
-  const r = dragA.rect; dragA = null;
-  if (r.x1 - r.x0 > 0.05 && r.y1 - r.y0 > 0.05) {
-    ZONE = r; lock = null; saveSettings();
-    if (PMODE === 0) { PMODE = 1; saveSettings(); toast('Zone set. Mode: ' + MODE_NAMES[PMODE] + '  (P to change)', 3500); }
-    else toast('Zone set', 2000);
-  }
-});
-
-function glow(x, y, r, h, a) {
-  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-  g.addColorStop(0, hsl(h, 60, a));
-  g.addColorStop(1, hsl(h, 60, 0));
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
-}
-
-function glint(x, y, r, h, a) {
-  ctx.fillStyle = hsl(h, 75, a);
-  ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, 6.283); ctx.fill();
-  ctx.fillRect(x - r * 2, y - 0.7, r * 4, 1.4);
-  ctx.fillRect(x - 0.7, y - r * 2, 1.4, r * 4);
-}
-
-function ease(k) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); }
-
-function drawItem(it, tm) {
-  const s = geo.tw * 0.34;
-  const k = it.grow >= 1 ? 1 : ease(Math.max(0, it.grow));
-  if (k <= 0.01) return;
-  const bob = Math.sin(tm * 2 + it.phase) * s * 0.08;
-  ctx.save();
-  ctx.translate(it.x, it.y + bob);
-  ctx.scale(k, k);
-  ctx.globalCompositeOperation = 'lighter';
-  glow(0, 0, s * (2.1 + Math.sin(tm * 2.4 + it.phase) * 0.25), it.hue, 0.6);
-  ctx.globalCompositeOperation = 'source-over';
-
-  ctx.lineWidth = s * 0.09;
-  ctx.strokeStyle = '#ffffff';
-
-  if (it.kind === 0) {
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.roundRect(-s * 0.22, -s * 0.05, s * 0.44, s * 0.6, s * 0.15); ctx.fill();
-    ctx.fillStyle = hsl(it.hue, 55, 1);
-    ctx.beginPath(); ctx.ellipse(0, -s * 0.02, s * 0.78, s * 0.62, 0, Math.PI, 2 * Math.PI); ctx.closePath(); ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    [[-0.34, -0.3, 0.13], [0.08, -0.5, 0.15], [0.4, -0.22, 0.1]].forEach(p => {
-      ctx.beginPath(); ctx.arc(p[0] * s, p[1] * s, p[2] * s, 0, 6.283); ctx.fill();
-    });
-  } else {
-    ctx.rotate(Math.sin(tm * 1.5 + it.phase) * 0.08);
-    ctx.fillStyle = hsl(it.hue, 55, 1);
-    ctx.beginPath(); ctx.roundRect(-s * 0.5, -s * 0.42, s, s * 0.9, s * 0.12); ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-s * 0.09, -s * 0.42, s * 0.18, s * 0.9);
-    ctx.fillRect(-s * 0.5, s * 0.0, s, s * 0.16);
-    ctx.beginPath(); ctx.ellipse(-s * 0.2, -s * 0.52, s * 0.22, s * 0.13, -0.5, 0, 6.283); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(s * 0.2, -s * 0.52, s * 0.22, s * 0.13, 0.5, 0, 6.283); ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawCalibration() {
-  ctx.save();
-  ctx.lineWidth = 2;
-  ctx.font = `${Math.round(H * 0.025)}px sans-serif`;
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  for (let p = 0; p <= 100; p += 5) {
-    const x = p / 100 * W - offset;
-    if (x < -2 || x > vw + 2) continue;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, vh); ctx.stroke();
-    if (p % 10 === 0) ctx.fillText(p + '%', x + 4, 24);
-  }
-  for (let i = 1; i < 6; i++) { ctx.beginPath(); ctx.moveTo(0, vh * i / 6); ctx.lineTo(vw, vh * i / 6); ctx.stroke(); }
-  ctx.strokeStyle = '#00ffd0'; ctx.lineWidth = 6;
-  ctx.strokeRect(3, 3, vw - 6, vh - 6);
-  ctx.fillStyle = '#00ffd0';
-  ctx.fillText(`${SIDE.toUpperCase()} ${OVAL ? 'oval' : 'arch'} ${vw}x${vh}  camera:${camOK ? 'on' : 'off'}  mirror:${MIRROR ? 1 : 0} flip:${FLIP ? 1 : 0} rot:${ROT * 90} camrot:${CAMROT * 90} gap:${GAP.toFixed(2)} zoom:${CAMZOOM.toFixed(2)} camx:${CAMX.toFixed(2)} camy:${CAMY.toFixed(2)} sens:${SENS.toFixed(1)}`, 14, vh - 14);
-  ctx.restore();
-}
-
-function drawFocusOverlay() {
-  let z = ZONE;
-  if (zoneEdit && dragA) {
-    z = dragA.rect;
-  }
-
-  if (z && (zoneEdit || debug)) {
-    const corners = [
-      sceneToDisplay(z.x0 * vw, z.y0 * vh),
-      sceneToDisplay(z.x1 * vw, z.y0 * vh),
-      sceneToDisplay(z.x1 * vw, z.y1 * vh),
-      sceneToDisplay(z.x0 * vw, z.y1 * vh)
-    ];
-
-    dctx.save();
-
-    dctx.beginPath();
-    dctx.moveTo(corners[0].x, corners[0].y);
-    for (let i = 1; i < corners.length; i++) {
-      dctx.lineTo(corners[i].x, corners[i].y);
-    }
-    dctx.closePath();
-
-    if (zoneEdit) {
-      dctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
-      dctx.fill();
-    }
-
-    dctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    dctx.lineWidth = 2;
-    dctx.setLineDash([10, 8]);
-    dctx.stroke();
-    dctx.setLineDash([]);
-
-    dctx.restore();
-  }
-
-  if (debug) {
-    const cellWidth = cv.width / GW;
-    const cellHeight = cv.height / GH;
-
-    dctx.save();
-
-    for (let i = 0; i < mf.length; i++) {
-      const value = mf[i];
-      if (value < 0.05) continue;
-
-      dctx.fillStyle =
-        `rgba(0,255,255,${Math.min(0.55, value * 0.6)})`;
-
-      dctx.fillRect(
-        (i % GW) * cellWidth,
-        Math.floor(i / GW) * cellHeight,
-        cellWidth + 0.5,
-        cellHeight + 0.5
-      );
-    }
-
-    if (lock) {
-      dctx.strokeStyle = 'rgba(120,255,160,0.95)';
-      dctx.lineWidth = 3;
-
-      dctx.beginPath();
-      dctx.arc(
-        (lock.x + 0.5) / GW * cv.width,
-        (lock.y + 0.5) / GH * cv.height,
-        LOCK_R / GW * cv.width * 0.5,
-        0,
-        Math.PI * 2
-      );
-      dctx.stroke();
-    }
-
-    dctx.restore();
-  }
-}
-
-let last = performance.now();
-function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  const tm = now / 1000;
-
-  analyze(dt);
-
-  let demoPt = null;
-  if (demo) {
-    demoPt = { x: vw * (0.5 + 0.38 * Math.sin(tm * 0.35)), y: vh * (0.6 + 0.3 * Math.sin(tm * 0.53 + 1)) };
-    const displayed = sceneToDisplay(demoPt.x, demoPt.y);
-    const cx = (displayed.x / cv.width * GW) | 0;
-    const cy = (displayed.y / cv.height * GH) | 0;
-    if (cx >= 0 && cy >= 0 && cx < GW && cy < GH) mf[cy * GW + cx] = 1;
-  }
-
-  const r = geo.tw * 0.5;
-  for (const it of items) {
-    if (!it.alive) continue;
-    if (camOK && camHits(it, r) > 0) collect(it);
-    else if (mouse && Math.hypot(mouse.x - it.x, mouse.y - it.y) < r * 0.8) collect(it);
-    else if (demoPt && Math.hypot(demoPt.x - it.x, demoPt.y - it.y) < r * 0.8) collect(it);
-  }
-  if (items.length && !items.some(i => i.alive) && now - clearedAt > RESPAWN_MS) reviveAll();
-  for (const it of items) if (it.alive && it.grow < 1) it.grow += dt * 1.3;
-
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, vw, vh);
-  ctx.drawImage(trackLayer, 0, 0);
-
-  ctx.globalCompositeOperation = 'lighter';
-  for (const a of ambient) {
-    const al = 0.5 + 0.5 * Math.sin(tm * 1.6 + a.ph);
-    glint(a.x, a.y, a.sz, -1, al * 0.8);
-  }
-  ctx.globalCompositeOperation = 'source-over';
-  for (const it of items) if (it.alive) drawItem(it, tm);
-
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const p = parts[i];
-    p.life += dt;
-    if (p.life >= p.max) { parts.splice(i, 1); continue; }
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    p.vx *= 0.96; p.vy *= 0.96;
-    const k = 1 - p.life / p.max;
-    glint(p.x, p.y, p.r * (0.5 + k), p.h, Math.min(1, k * 1.2));
-  }
-  for (let i = rings.length - 1; i >= 0; i--) {
-    const g = rings[i];
-    g.t += dt;
-    if (g.t > 0.7) { rings.splice(i, 1); continue; }
-    ctx.strokeStyle = hsl(g.h, 70, 1 - g.t / 0.7);
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(g.x, g.y, geo.tw * (0.2 + g.t * 0.9), 0, 6.283); ctx.stroke();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-
-  // Final render to projector display canvas with picture rotation applied safely
-  dctx.setTransform(1, 0, 0, 1, 0, 0);
-  dctx.fillStyle = '#000';
-  dctx.fillRect(0, 0, cv.width, cv.height);
-  
-  dctx.save();
-  dctx.translate(cv.width / 2, cv.height / 2);
-  dctx.rotate(ROT * Math.PI / 2);
-  if (ROT % 2 !== 0) {
-    dctx.scale(cv.height / cv.width, cv.width / cv.height);
-  }
-  dctx.drawImage(sc, -vw / 2, -vh / 2);
-  dctx.restore();
-
-  // Camera debug overlay is drawn last so it stays fixed to the physical screen.
-  drawFocusOverlay();
-
-  if (showCal) {
-    drawCalibration();
-  }
-
-  requestAnimationFrame(frame);
-}
 
 function toggleFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen().catch(() => {});
+if (document.fullscreenElement) document.exitFullscreen();
+else document.documentElement.requestFullscreen().catch(() => { });
 }
 
 window.addEventListener('keydown', e => {
-  const k = e.key.toLowerCase();
-  if (k === 'f') {
-    toggleFullscreen();
-  }
-  else if (e.shiftKey && e.key === 'ArrowLeft') {
-    CAMX -= 0.02;
-    havePrev = false;
-    saveSettings();
-    toast('Camera X: ' + CAMX.toFixed(2));
-  }
-  else if (e.shiftKey && e.key === 'ArrowRight') {
-    CAMX += 0.02;
-    havePrev = false;
-    saveSettings();
-    toast('Camera X: ' + CAMX.toFixed(2));
-  }
-  else if (e.shiftKey && e.key === 'ArrowUp') {
-    CAMY -= 0.02;
-    havePrev = false;
-    saveSettings();
-    toast('Camera Y: ' + CAMY.toFixed(2));
-  }
-  else if (e.shiftKey && e.key === 'ArrowDown') {
-    CAMY += 0.02;
-    havePrev = false;
-    saveSettings();
-    toast('Camera Y: ' + CAMY.toFixed(2));
-  }
-  else if (e.key === 'ArrowLeft') {
-    ROT = (ROT + 3) % 4;
-    saveSettings();
-    toast('Picture rotation: ' + ROT * 90 + '°');
-  }
-  else if (e.key === 'ArrowRight') {
-    ROT = (ROT + 1) % 4;
-    saveSettings();
-    toast('Picture rotation: ' + ROT * 90 + '°');
-  }
-  else if (e.key === 'ArrowUp') {
-    CAMROT = (CAMROT + 1) % 4;
-    havePrev = false;
-    saveSettings();
-    toast('Camera rotation: ' + CAMROT * 90 + '°');
-  }
-  else if (e.key === 'ArrowDown') {
-    CAMROT = (CAMROT + 3) % 4;
-    havePrev = false;
-    saveSettings();
-    toast('Camera rotation: ' + CAMROT * 90 + '°');
-  }
-  else if (k === 'm') { MIRROR = !MIRROR; havePrev = false; saveSettings(); toast('Mirror camera: ' + (MIRROR ? 'on' : 'off')); }
-  else if (k === 'v') { FLIP = !FLIP; havePrev = false; saveSettings(); toast('Flip camera: ' + (FLIP ? 'on' : 'off')); }
-  else if (k === 'c') nextCamera();
-  else if (k === 'i') listCameras();
-  else if (k === 'd') { debug = !debug; toast('Motion view: ' + (debug ? 'on' : 'off')); }
-  else if (k === 'a') { demo = !demo; toast('Demo mover: ' + (demo ? 'on' : 'off')); }
-  else if (k === 'h') hintEl.classList.toggle('show');
-  else if (k === 'g') { showCal = !showCal; toast('Grid: ' + (showCal ? 'on' : 'off')); }
-  else if (k === 'r') { reviveAll(); toast('Pickups reset'); }
-  else if (k === 'p') { PMODE = (PMODE + 1) % 3; lock = null; saveSettings(); toast('Focus mode: ' + MODE_NAMES[PMODE]); }
-  else if (k === 'z') { zoneEdit = !zoneEdit; dragA = null; toast(zoneEdit ? 'Drag on floor to set zone. Press Z again when done.' : 'Zone edit off'); }
-  else if (k === 'x') { ZONE = null; lock = null; saveSettings(); toast('Zone cleared'); }
-  else if (k === 'l') { lock = null; toast('Lock released'); }
-  else if (k === '[') { MINAREA = Math.max(2, MINAREA - 2); saveSettings(); toast('Min size: ' + MINAREA); }
-  else if (k === ']') { MINAREA = Math.min(80, MINAREA + 2); saveSettings(); toast('Min size: ' + MINAREA); }
-  else if (k === '-') { SENS = Math.max(0.4, SENS / 1.15); saveSettings(); toast('Sensitivity: ' + SENS.toFixed(2)); }
-  else if (k === '+') { SENS = Math.min(4, SENS * 1.15); saveSettings(); toast('Sensitivity: ' + SENS.toFixed(2)); }
-  else if (k === '0') { CAMZOOM = 1; CAMX = 0; CAMY = 0; havePrev = false; saveSettings(); toast('Camera reset'); }
-  else if (k === '1') { GAP = Math.max(0, GAP - 0.05); saveSettings(); resize(); toast('Gap: ' + GAP.toFixed(2)); }
-  else if (k === '2') { GAP = Math.min(2, GAP + 0.05); saveSettings(); resize(); toast('Gap: ' + GAP.toFixed(2)); }
-  else if (k === ',') { CAMZOOM = Math.max(0.5, CAMZOOM - 0.05); havePrev = false; saveSettings(); toast('Camera zoom: ' + CAMZOOM.toFixed(2)); }
-  else if (k === '.') { CAMZOOM = Math.min(2.5, CAMZOOM + 0.05); havePrev = false; saveSettings(); toast('Camera zoom: ' + CAMZOOM.toFixed(2)); }
+const k = e.key.toLowerCase();
+if (e.key === 'Tab') { e.preventDefault(); togglePanel(); return; }
+if (k === 'f') toggleFullscreen();
+else if (k === 'm') { mirror = !mirror; mf.fill(0); trail.fill(0); syncUI(); toast('Mirror ' + (mirror ? 'on' : 'off')); }
+else if (k === 'd') { debug = !debug; }
+else if (k === 'c') nextCamera();
+else if (k === 'i') listCameras();
+else if (k === 'a') { demo = !demo; syncUI(); toast('Demo wanderer ' + (demo ? 'on' : 'off')); }
+else if (k === 'h') { hintEl.classList.toggle('show'); }
+else if (k === '-' || k === '_') { sens = Math.max(0.4, sens / 1.2); syncUI(); toast('Sensitivity ' + sens.toFixed(2)); }
+else if (k === '=' || k === '+') { sens = Math.min(4, sens * 1.2); syncUI(); toast('Sensitivity ' + sens.toFixed(2)); }
+else if (e.key === 'ArrowLeft') { viewRot = (viewRot + 3) % 4; syncUI(); toast('Rotation: ' + (viewRot * 90) + '°'); }
+else if (e.key === 'ArrowRight') { viewRot = (viewRot + 1) % 4; syncUI(); toast('Rotation: ' + (viewRot * 90) + '°'); }
+else if (e.key === '0') { viewRot = 0; viewZoom = 1; syncUI(); toast('View reset'); }
 });
 
 window.addEventListener('resize', resize);
 resize();
-startCam().catch(() => {});
+syncUI();
 requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>
